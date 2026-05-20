@@ -15,6 +15,48 @@ export interface WaitForTraceOptions {
 const DEFAULT_WAIT: WaitForTraceOptions = { maxWaitMs: 60_000, stabilityMs: 10_000 };
 const TRACE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
+// SigNoz v3 list queries require non-empty selectColumns. Column names follow the
+// snake_case schema used in SigNoz v0.50+. The normalizer reads both camelCase and
+// snake_case variants, so either set of returned field names will still parse.
+const col = (key: string, dataType: string = 'string', isColumn: boolean = true) => ({
+  key,
+  dataType,
+  type: isColumn ? '' : 'tag',
+  isColumn,
+});
+
+const TRACE_LIST_COLUMNS = [
+  col('span_id'),
+  col('parent_span_id'),
+  col('trace_id'),
+  col('name'),
+  col('service_name'),
+  col('status_code'),
+  col('status_message'),
+  col('timestamp'),
+  col('duration_nano', 'int64'),
+  col('has_error', 'bool'),
+  col('response_status_code'),
+  col('http_status_code'),
+  col('attributes_string'),
+  col('attributes_number', 'float64'),
+  col('attributes_bool', 'bool'),
+  col('events'),
+  col('code.filepath', 'string', false),
+];
+
+const LOG_LIST_COLUMNS = [
+  col('timestamp'),
+  col('severity_text'),
+  col('body'),
+  col('service_name'),
+  col('trace_id'),
+  col('span_id'),
+  col('attributes_string'),
+  col('attributes_number', 'float64'),
+  col('attributes_bool', 'bool'),
+];
+
 interface QueryRangeListItem {
   timestamp?: string;
   data?: Record<string, unknown>;
@@ -139,7 +181,7 @@ export class SigNozClient {
             offset: 0,
             pageSize: 1000,
             orderBy: [{ columnName: 'timestamp', order: 'asc' }],
-            selectColumns: [],
+            selectColumns: dataSource === 'traces' ? TRACE_LIST_COLUMNS : LOG_LIST_COLUMNS,
           },
         },
       },
