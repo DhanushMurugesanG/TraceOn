@@ -165,7 +165,13 @@ export class SigNozClient {
             filters: {
               op: 'AND',
               items: [{
-                key: { key: traceIdKey, dataType: 'string', type: 'tag', isColumn: true },
+                // Traces: SigNoz recognises `traceID` as a top-level column even when
+                // tagged. Logs: `trace_id` only resolves to the bare column when type
+                // is empty — with `type: 'tag'` SigNoz rewrites it to
+                // attribute_string_trace_id, which doesn't exist on the logs table.
+                key: dataSource === 'logs'
+                  ? { key: traceIdKey, dataType: 'string', type: '', isColumn: true }
+                  : { key: traceIdKey, dataType: 'string', type: 'tag', isColumn: true },
                 op: '=',
                 value: traceId,
               }],
