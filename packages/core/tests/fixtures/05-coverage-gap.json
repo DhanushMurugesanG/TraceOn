@@ -1,0 +1,58 @@
+{
+  "name": "scenario-05-coverage-gap",
+  "input": {
+    "run_id": "01HX2K7QF3MNRSGYE4ZW9PVCBE",
+    "trace_id": "e5f60718293a4b5c6d7e8f90a1b2c3d4",
+    "test_summary": {
+      "file": "tests/dashboard.spec.ts",
+      "name": "shows dashboard summary",
+      "status": "passed",
+      "duration_ms": 615,
+      "steps_executed": ["navigate to /dashboard", "wait for summary"]
+    },
+    "spans": [
+      {
+        "span_id": "dddd000000000001",
+        "trace_id": "e5f60718293a4b5c6d7e8f90a1b2c3d4",
+        "name": "GET /dashboard",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000040000,
+        "end_ts": 1716000040120,
+        "duration_ms": 120,
+        "attributes": { "http.method": "GET", "http.url": "/dashboard", "http.status_code": 200 },
+        "events": []
+      },
+      {
+        "span_id": "dddd000000000002",
+        "parent_span_id": "dddd000000000001",
+        "trace_id": "e5f60718293a4b5c6d7e8f90a1b2c3d4",
+        "name": "GET /api/summary",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000040030,
+        "end_ts": 1716000040110,
+        "duration_ms": 80,
+        "attributes": { "http.method": "GET", "http.status_code": 200, "http.route": "/api/summary" },
+        "events": []
+      }
+    ],
+    "logs": [
+      { "ts": 1716000040005, "service": "frontend", "level": "info", "body": "navigated to /dashboard", "trace_id": "e5f60718293a4b5c6d7e8f90a1b2c3d4", "attributes": {} }
+    ],
+    "browser_events": [
+      { "kind": "navigation", "ts": 1716000040000, "url": "http://localhost:5173/dashboard", "attributes": {} }
+    ],
+    "coverage": {
+      "hits": ["frontend/src/Dashboard.tsx", "backend/summary.ts"],
+      "misses": ["frontend/src/RecentActivity.tsx"],
+      "warnings": ["RecentActivity.tsx was changed but no spans referenced it — the test may not exercise this code path"]
+    },
+    "changed_files": ["frontend/src/Dashboard.tsx", "frontend/src/RecentActivity.tsx"],
+    "incomplete": false
+  },
+  "expected": {
+    "tier1_count": 0,
+    "budget_under": 5000
+  }
+}

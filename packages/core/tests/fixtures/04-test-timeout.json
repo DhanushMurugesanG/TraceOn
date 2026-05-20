@@ -1,0 +1,73 @@
+{
+  "name": "scenario-04-test-timeout",
+  "input": {
+    "run_id": "01HX2K7QF3MNRSGYE4ZW9PVCBD",
+    "trace_id": "d4e5f60718293a4b5c6d7e8f90a1b2c3",
+    "test_summary": {
+      "file": "tests/checkout.spec.ts",
+      "name": "completes checkout end-to-end",
+      "status": "timedOut",
+      "duration_ms": 30000,
+      "steps_executed": ["add to cart", "go to checkout", "fill card", "click pay"],
+      "failure_message": "Test timeout of 30000ms exceeded waiting for selector 'text=Order placed'"
+    },
+    "spans": [
+      {
+        "span_id": "cccc000000000001",
+        "trace_id": "d4e5f60718293a4b5c6d7e8f90a1b2c3",
+        "name": "POST /checkout",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000030000,
+        "end_ts": 1716000030140,
+        "duration_ms": 140,
+        "attributes": { "http.method": "POST", "http.url": "/checkout" },
+        "events": []
+      },
+      {
+        "span_id": "cccc000000000002",
+        "parent_span_id": "cccc000000000001",
+        "trace_id": "d4e5f60718293a4b5c6d7e8f90a1b2c3",
+        "name": "POST /api/checkout",
+        "service": "backend",
+        "status": "UNSET",
+        "start_ts": 1716000030050,
+        "end_ts": 0,
+        "duration_ms": 0,
+        "attributes": { "http.method": "POST", "http.route": "/api/checkout" },
+        "events": []
+      },
+      {
+        "span_id": "cccc000000000003",
+        "parent_span_id": "cccc000000000002",
+        "trace_id": "d4e5f60718293a4b5c6d7e8f90a1b2c3",
+        "name": "POST stripe.charges.create",
+        "service": "payments",
+        "status": "UNSET",
+        "start_ts": 1716000030200,
+        "end_ts": 0,
+        "duration_ms": 0,
+        "attributes": { "rpc.service": "stripe", "rpc.method": "charges.create" },
+        "events": []
+      }
+    ],
+    "logs": [
+      { "ts": 1716000030010, "service": "frontend", "level": "info", "body": "submitting checkout form", "trace_id": "d4e5f60718293a4b5c6d7e8f90a1b2c3", "attributes": {} },
+      { "ts": 1716000030060, "service": "backend", "level": "info", "body": "calling payment provider", "trace_id": "d4e5f60718293a4b5c6d7e8f90a1b2c3", "attributes": {} }
+    ],
+    "browser_events": [
+      { "kind": "navigation", "ts": 1716000030005, "url": "http://localhost:5173/checkout", "attributes": {} }
+    ],
+    "coverage": {
+      "hits": ["frontend/src/Checkout.tsx", "backend/checkout.ts"],
+      "misses": [],
+      "warnings": ["3 spans never received end_ts — likely in-flight when test timed out"]
+    },
+    "changed_files": ["backend/checkout.ts"],
+    "incomplete": true
+  },
+  "expected": {
+    "tier1_count": 1,
+    "tier1_includes": ["timedOut"]
+  }
+}

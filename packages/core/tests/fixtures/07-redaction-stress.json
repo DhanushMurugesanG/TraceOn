@@ -1,0 +1,60 @@
+{
+  "name": "scenario-07-redaction-stress",
+  "input": {
+    "run_id": "01HX2K7QF3MNRSGYE4ZW9PVCBG",
+    "trace_id": "70718293a4b5c6d7e8f90a1b2c3d4e5f",
+    "test_summary": {
+      "file": "tests/login.spec.ts",
+      "name": "logs in with valid credentials",
+      "status": "passed",
+      "duration_ms": 940,
+      "steps_executed": ["fill email", "fill password", "submit", "assert redirected"]
+    },
+    "spans": [
+      {
+        "span_id": "eeee000000000001",
+        "trace_id": "70718293a4b5c6d7e8f90a1b2c3d4e5f",
+        "name": "POST /login",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000050000,
+        "end_ts": 1716000050300,
+        "duration_ms": 300,
+        "attributes": { "http.method": "POST", "http.url": "/login", "user.email": "<EMAIL_REDACTED>" },
+        "events": []
+      },
+      {
+        "span_id": "eeee000000000002",
+        "parent_span_id": "eeee000000000001",
+        "trace_id": "70718293a4b5c6d7e8f90a1b2c3d4e5f",
+        "name": "POST /api/auth/login",
+        "service": "auth",
+        "status": "OK",
+        "start_ts": 1716000050050,
+        "end_ts": 1716000050250,
+        "duration_ms": 200,
+        "attributes": { "http.method": "POST", "http.status_code": 200, "auth.token": "<JWT_REDACTED>" },
+        "events": []
+      }
+    ],
+    "logs": [
+      { "ts": 1716000050010, "service": "auth", "level": "info", "body": "login attempt for <EMAIL_REDACTED>", "trace_id": "70718293a4b5c6d7e8f90a1b2c3d4e5f", "attributes": { "email_hash": "abc123" } },
+      { "ts": 1716000050200, "service": "auth", "level": "info", "body": "issued token <JWT_REDACTED> for user 42", "trace_id": "70718293a4b5c6d7e8f90a1b2c3d4e5f", "attributes": {} },
+      { "ts": 1716000050210, "service": "billing", "level": "info", "body": "fetched payment method <CARD_REDACTED> for user 42", "trace_id": "70718293a4b5c6d7e8f90a1b2c3d4e5f", "attributes": {} }
+    ],
+    "browser_events": [
+      { "kind": "navigation", "ts": 1716000050000, "url": "http://localhost:5173/login", "attributes": {} }
+    ],
+    "coverage": {
+      "hits": ["frontend/src/Login.tsx", "auth/login.ts"],
+      "misses": [],
+      "warnings": []
+    },
+    "changed_files": ["auth/login.ts"],
+    "incomplete": false
+  },
+  "expected": {
+    "tier1_count": 0,
+    "budget_under": 5000
+  }
+}

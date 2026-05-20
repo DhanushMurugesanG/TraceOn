@@ -1,0 +1,769 @@
+{
+  "name": "scenario-06-large-trace",
+  "input": {
+    "run_id": "01HX2K7QF3MNRSGYE4ZW9PVCBF",
+    "trace_id": "0600000000000000000000000000000a",
+    "test_summary": {
+      "file": "tests/widgets.spec.ts",
+      "name": "paginates through 30 batches",
+      "status": "failed",
+      "duration_ms": 8420,
+      "steps_executed": [
+        "navigate to /widgets",
+        "click next",
+        "wait for batch 18",
+        "assert batch loaded"
+      ],
+      "failure_message": "expect(page.locator('text=Batch 18')).toBeVisible() — batch 18 never loaded"
+    },
+    "spans": [
+      {
+        "span_id": "1000000000000000",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "frontend op 0",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000090000,
+        "end_ts": 1716000090030,
+        "duration_ms": 30,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op0"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000001",
+        "parent_span_id": "1000000000000000",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "backend op 1",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000090030,
+        "end_ts": 1716000090064,
+        "duration_ms": 34,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op1"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000002",
+        "parent_span_id": "1000000000000001",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "db op 2",
+        "service": "db",
+        "status": "OK",
+        "start_ts": 1716000090060,
+        "end_ts": 1716000090098,
+        "duration_ms": 38,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op2"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000003",
+        "parent_span_id": "1000000000000002",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "cache op 3",
+        "service": "cache",
+        "status": "OK",
+        "start_ts": 1716000090090,
+        "end_ts": 1716000090132,
+        "duration_ms": 42,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op3"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000004",
+        "parent_span_id": "1000000000000003",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "search op 4",
+        "service": "search",
+        "status": "OK",
+        "start_ts": 1716000090120,
+        "end_ts": 1716000090166,
+        "duration_ms": 46,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op4"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000005",
+        "parent_span_id": "1000000000000004",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "frontend op 5",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000090150,
+        "end_ts": 1716000090200,
+        "duration_ms": 50,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op5"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000006",
+        "parent_span_id": "1000000000000005",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "backend op 6",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000090180,
+        "end_ts": 1716000090234,
+        "duration_ms": 54,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op6"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000007",
+        "parent_span_id": "1000000000000006",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "db op 7",
+        "service": "db",
+        "status": "OK",
+        "start_ts": 1716000090210,
+        "end_ts": 1716000090268,
+        "duration_ms": 58,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op7"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000008",
+        "parent_span_id": "1000000000000007",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "cache op 8",
+        "service": "cache",
+        "status": "OK",
+        "start_ts": 1716000090240,
+        "end_ts": 1716000090302,
+        "duration_ms": 62,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op8"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000009",
+        "parent_span_id": "1000000000000008",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "search op 9",
+        "service": "search",
+        "status": "OK",
+        "start_ts": 1716000090270,
+        "end_ts": 1716000090336,
+        "duration_ms": 66,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op9"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000010",
+        "parent_span_id": "1000000000000009",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "frontend op 10",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000090300,
+        "end_ts": 1716000090370,
+        "duration_ms": 70,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op10"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000011",
+        "parent_span_id": "1000000000000010",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "backend op 11",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000090330,
+        "end_ts": 1716000090404,
+        "duration_ms": 74,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op11"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000012",
+        "parent_span_id": "1000000000000011",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "db op 12",
+        "service": "db",
+        "status": "OK",
+        "start_ts": 1716000090360,
+        "end_ts": 1716000090438,
+        "duration_ms": 78,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op12"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000013",
+        "parent_span_id": "1000000000000012",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "cache op 13",
+        "service": "cache",
+        "status": "OK",
+        "start_ts": 1716000090390,
+        "end_ts": 1716000090472,
+        "duration_ms": 82,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op13"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000014",
+        "parent_span_id": "1000000000000013",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "search op 14",
+        "service": "search",
+        "status": "OK",
+        "start_ts": 1716000090420,
+        "end_ts": 1716000090506,
+        "duration_ms": 86,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op14"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000015",
+        "parent_span_id": "1000000000000014",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "frontend op 15",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000090450,
+        "end_ts": 1716000090540,
+        "duration_ms": 90,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op15"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000016",
+        "parent_span_id": "1000000000000015",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "backend op 16",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000090480,
+        "end_ts": 1716000090574,
+        "duration_ms": 94,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op16"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000017",
+        "parent_span_id": "1000000000000016",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "db op 17",
+        "service": "db",
+        "status": "ERROR",
+        "start_ts": 1716000090510,
+        "end_ts": 1716000091360,
+        "duration_ms": 850,
+        "attributes": {
+          "http.method": "GET",
+          "http.route": "/api/widgets/17",
+          "exception.message": "timeout exceeded"
+        },
+        "events": [
+          {
+            "name": "exception",
+            "ts": 1716000091310,
+            "attributes": {
+              "exception.type": "TimeoutError"
+            }
+          }
+        ]
+      },
+      {
+        "span_id": "1000000000000018",
+        "parent_span_id": "1000000000000017",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "cache op 18",
+        "service": "cache",
+        "status": "OK",
+        "start_ts": 1716000090540,
+        "end_ts": 1716000090642,
+        "duration_ms": 102,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op18"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000019",
+        "parent_span_id": "1000000000000018",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "search op 19",
+        "service": "search",
+        "status": "OK",
+        "start_ts": 1716000090570,
+        "end_ts": 1716000090676,
+        "duration_ms": 106,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op19"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000020",
+        "parent_span_id": "1000000000000019",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "frontend op 20",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000090600,
+        "end_ts": 1716000090710,
+        "duration_ms": 110,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op20"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000021",
+        "parent_span_id": "1000000000000020",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "backend op 21",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000090630,
+        "end_ts": 1716000090744,
+        "duration_ms": 114,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op21"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000022",
+        "parent_span_id": "1000000000000021",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "db op 22",
+        "service": "db",
+        "status": "OK",
+        "start_ts": 1716000090660,
+        "end_ts": 1716000090778,
+        "duration_ms": 118,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op22"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000023",
+        "parent_span_id": "1000000000000022",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "cache op 23",
+        "service": "cache",
+        "status": "OK",
+        "start_ts": 1716000090690,
+        "end_ts": 1716000090812,
+        "duration_ms": 122,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op23"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000024",
+        "parent_span_id": "1000000000000023",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "search op 24",
+        "service": "search",
+        "status": "OK",
+        "start_ts": 1716000090720,
+        "end_ts": 1716000090846,
+        "duration_ms": 126,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op24"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000025",
+        "parent_span_id": "1000000000000024",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "frontend op 25",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000090750,
+        "end_ts": 1716000090880,
+        "duration_ms": 130,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op25"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000026",
+        "parent_span_id": "1000000000000025",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "backend op 26",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000090780,
+        "end_ts": 1716000090914,
+        "duration_ms": 134,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op26"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000027",
+        "parent_span_id": "1000000000000026",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "db op 27",
+        "service": "db",
+        "status": "OK",
+        "start_ts": 1716000090810,
+        "end_ts": 1716000090948,
+        "duration_ms": 138,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op27"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000028",
+        "parent_span_id": "1000000000000027",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "cache op 28",
+        "service": "cache",
+        "status": "OK",
+        "start_ts": 1716000090840,
+        "end_ts": 1716000090982,
+        "duration_ms": 142,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op28"
+        },
+        "events": []
+      },
+      {
+        "span_id": "1000000000000029",
+        "parent_span_id": "1000000000000028",
+        "trace_id": "0600000000000000000000000000000a",
+        "name": "search op 29",
+        "service": "search",
+        "status": "OK",
+        "start_ts": 1716000090870,
+        "end_ts": 1716000091016,
+        "duration_ms": 146,
+        "attributes": {
+          "http.method": "GET",
+          "http.status_code": 200,
+          "http.route": "/api/op29"
+        },
+        "events": []
+      }
+    ],
+    "logs": [
+      {
+        "ts": 1716000090000,
+        "service": "frontend",
+        "level": "info",
+        "body": "processed batch 0",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 1
+        }
+      },
+      {
+        "ts": 1716000090050,
+        "service": "backend",
+        "level": "info",
+        "body": "processed batch 1",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 2
+        }
+      },
+      {
+        "ts": 1716000090100,
+        "service": "db",
+        "level": "info",
+        "body": "processed batch 2",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 3
+        }
+      },
+      {
+        "ts": 1716000090150,
+        "service": "cache",
+        "level": "info",
+        "body": "processed batch 3",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 4
+        }
+      },
+      {
+        "ts": 1716000090200,
+        "service": "search",
+        "level": "info",
+        "body": "processed batch 4",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 5
+        }
+      },
+      {
+        "ts": 1716000090250,
+        "service": "frontend",
+        "level": "info",
+        "body": "processed batch 5",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 6
+        }
+      },
+      {
+        "ts": 1716000090300,
+        "service": "backend",
+        "level": "info",
+        "body": "processed batch 6",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 7
+        }
+      },
+      {
+        "ts": 1716000090350,
+        "service": "db",
+        "level": "info",
+        "body": "processed batch 7",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 8
+        }
+      },
+      {
+        "ts": 1716000090400,
+        "service": "cache",
+        "level": "info",
+        "body": "processed batch 8",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 9
+        }
+      },
+      {
+        "ts": 1716000090450,
+        "service": "search",
+        "level": "info",
+        "body": "processed batch 9",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 10
+        }
+      },
+      {
+        "ts": 1716000090500,
+        "service": "frontend",
+        "level": "info",
+        "body": "processed batch 10",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 11
+        }
+      },
+      {
+        "ts": 1716000090550,
+        "service": "backend",
+        "level": "info",
+        "body": "processed batch 11",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 12
+        }
+      },
+      {
+        "ts": 1716000090600,
+        "service": "db",
+        "level": "info",
+        "body": "processed batch 12",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 13
+        }
+      },
+      {
+        "ts": 1716000090650,
+        "service": "cache",
+        "level": "info",
+        "body": "processed batch 13",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 14
+        }
+      },
+      {
+        "ts": 1716000090700,
+        "service": "search",
+        "level": "info",
+        "body": "processed batch 14",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 15
+        }
+      },
+      {
+        "ts": 1716000090750,
+        "service": "frontend",
+        "level": "info",
+        "body": "processed batch 15",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 16
+        }
+      },
+      {
+        "ts": 1716000090800,
+        "service": "backend",
+        "level": "info",
+        "body": "processed batch 16",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 17
+        }
+      },
+      {
+        "ts": 1716000090850,
+        "service": "db",
+        "level": "info",
+        "body": "processed batch 17",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 18
+        }
+      },
+      {
+        "ts": 1716000090900,
+        "service": "cache",
+        "level": "info",
+        "body": "processed batch 18",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 19
+        }
+      },
+      {
+        "ts": 1716000090950,
+        "service": "search",
+        "level": "info",
+        "body": "processed batch 19",
+        "trace_id": "0600000000000000000000000000000a",
+        "attributes": {
+          "batch_size": 20
+        }
+      }
+    ],
+    "browser_events": [
+      {
+        "kind": "navigation",
+        "ts": 1716000089995,
+        "url": "http://localhost:5173/widgets",
+        "attributes": {}
+      }
+    ],
+    "coverage": {
+      "hits": [
+        "frontend/src/Widgets.tsx",
+        "backend/widgets.ts"
+      ],
+      "misses": [],
+      "warnings": []
+    },
+    "changed_files": [
+      "backend/widgets.ts"
+    ],
+    "incomplete": false
+  },
+  "expected": {
+    "tier1_count": 2,
+    "tier1_includes": [
+      "ERROR",
+      "failed"
+    ],
+    "budget_under": 50000
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "name": "scenario-03-frontend-crash",
+  "input": {
+    "run_id": "01HX2K7QF3MNRSGYE4ZW9PVCBC",
+    "trace_id": "c3d4e5f60718293a4b5c6d7e8f90a1b2",
+    "test_summary": {
+      "file": "tests/profile.spec.ts",
+      "name": "renders the user profile",
+      "status": "failed",
+      "duration_ms": 1830,
+      "steps_executed": ["navigate to /profile/42", "wait for name"],
+      "failure_message": "Page closed: TypeError: Cannot read properties of undefined (reading 'name')"
+    },
+    "spans": [
+      {
+        "span_id": "bbbb000000000001",
+        "trace_id": "c3d4e5f60718293a4b5c6d7e8f90a1b2",
+        "name": "GET /profile/42",
+        "service": "frontend",
+        "status": "OK",
+        "start_ts": 1716000020000,
+        "end_ts": 1716000020220,
+        "duration_ms": 220,
+        "attributes": { "http.method": "GET", "http.url": "/profile/42", "http.status_code": 200 },
+        "events": []
+      },
+      {
+        "span_id": "bbbb000000000002",
+        "parent_span_id": "bbbb000000000001",
+        "trace_id": "c3d4e5f60718293a4b5c6d7e8f90a1b2",
+        "name": "GET /api/users/42",
+        "service": "backend",
+        "status": "OK",
+        "start_ts": 1716000020030,
+        "end_ts": 1716000020180,
+        "duration_ms": 150,
+        "attributes": { "http.method": "GET", "http.status_code": 200, "http.route": "/api/users/:id" },
+        "events": []
+      }
+    ],
+    "logs": [
+      { "ts": 1716000020040, "service": "backend", "level": "info", "body": "fetched user 42", "trace_id": "c3d4e5f60718293a4b5c6d7e8f90a1b2", "attributes": {} }
+    ],
+    "browser_events": [
+      { "kind": "navigation", "ts": 1716000020005, "url": "http://localhost:5173/profile/42", "attributes": {} },
+      {
+        "kind": "page_error",
+        "ts": 1716000020260,
+        "level": "error",
+        "text": "TypeError: Cannot read properties of undefined (reading 'name')",
+        "stack": "TypeError: Cannot read properties of undefined (reading 'name')\n  at ProfilePage (ProfilePage.tsx:18:23)\n  at renderWithHooks (react-dom.js:14:1)",
+        "attributes": { "source": "ProfilePage.tsx" }
+      }
+    ],
+    "coverage": {
+      "hits": ["frontend/src/ProfilePage.tsx", "backend/users.ts"],
+      "misses": [],
+      "warnings": []
+    },
+    "changed_files": ["frontend/src/ProfilePage.tsx"],
+    "incomplete": false
+  },
+  "expected": {
+    "tier1_count": 2,
+    "tier1_includes": ["TypeError", "failed"]
+  }
+}
