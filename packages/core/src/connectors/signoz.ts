@@ -15,46 +15,41 @@ export interface WaitForTraceOptions {
 const DEFAULT_WAIT: WaitForTraceOptions = { maxWaitMs: 60_000, stabilityMs: 10_000 };
 const TRACE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
-// SigNoz v3 list queries require non-empty selectColumns. Column names follow the
-// snake_case schema used in SigNoz v0.50+. The normalizer reads both camelCase and
-// snake_case variants, so either set of returned field names will still parse.
-const col = (key: string, dataType: string = 'string', isColumn: boolean = true) => ({
-  key,
-  dataType,
-  type: isColumn ? '' : 'tag',
-  isColumn,
-});
+// SigNoz v3 list queries require non-empty selectColumns. SigNoz only renders a
+// fixed whitelist of names as bare table columns; anything else (including the
+// attributes_* map columns themselves) gets rewritten to an attribute_string_<key>
+// lookup, which fails. So we select only confirmed-bare columns, and pull
+// individual semantic attributes via tag-style entries (which render as
+// attributes_string['<key>']).
+const col = (key: string, dataType: string = 'string') => ({ key, dataType, type: '', isColumn: true });
+const tag = (key: string, dataType: string = 'string') => ({ key, dataType, type: 'tag', isColumn: false });
 
 const TRACE_LIST_COLUMNS = [
+  col('timestamp'),
   col('span_id'),
   col('parent_span_id'),
   col('trace_id'),
   col('name'),
-  col('service_name'),
   col('status_code'),
   col('status_message'),
-  col('timestamp'),
   col('duration_nano', 'int64'),
   col('has_error', 'bool'),
   col('response_status_code'),
-  col('http_status_code'),
-  col('attributes_string'),
-  col('attributes_number', 'float64'),
-  col('attributes_bool', 'bool'),
-  col('events'),
-  col('code.filepath', 'string', false),
+  // Semantic attributes pulled from attributes_string by key.
+  tag('service.name'),
+  tag('http.status_code'),
+  tag('http.method'),
+  tag('http.route'),
+  tag('code.filepath'),
 ];
 
 const LOG_LIST_COLUMNS = [
   col('timestamp'),
   col('severity_text'),
   col('body'),
-  col('service_name'),
   col('trace_id'),
   col('span_id'),
-  col('attributes_string'),
-  col('attributes_number', 'float64'),
-  col('attributes_bool', 'bool'),
+  tag('service.name'),
 ];
 
 interface QueryRangeListItem {
