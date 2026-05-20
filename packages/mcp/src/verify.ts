@@ -1,0 +1,180 @@
+import { z } from 'zod';
+import { resolve } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import {
+  rank,
+  SigNozClient,
+  gatherEvidence,
+  type VerificationResult,
+  type RawEvidence,
+  type IntentHint,
+} from '@traceon/core';
+import { generateRunId, generateTraceId } from './ids.js';
+import { persistRun } from './persistence.js';
+import { runPlaywright } from './playwright.js';
+import { loadConfig } from './config.js';
+
+export const verifyToolDefinition = {
+  name: 'traceon_verify',
+  description:
+    'Run a Playwright test for a feature change and return ranked runtime evidence. Use this to verify the feature actually works end-to-end after editing code. Pass the test you wrote, the user\'s intent, and the files you changed.',
+  inputSchema: {
+    type: 'object',
+    required: ['test'],
+    properties: {
+      test: { type: 'string' },
+      intent: { type: 'string' },
+      changed_files: { type: 'array', items: { type: 'string' } },
+      env: { type: 'string' },
+      prior_run_id: { type: 'string' },
+      iteration_index: { type: 'integer' },
+    },
+  },
+} as const;
+
+const VerifyArgs = z.object({
+  test: z.string(),
+  intent: z.string().optional(),
+  changed_files: z.array(z.string()).default([]),
+  env: z.string().default('default'),
+  prior_run_id: z.string().optional(),
+  iteration_index: z.number().int().optional(),
+});
+
+export async function handleVerify(args: unknown): Promise<VerificationResult> {
+  const parsed = VerifyArgs.parse(args);
+  const config = loadConfig(parsed.env);
+
+  const resolvedTest = resolve(parsed.test);
+  if (!existsSync(resolvedTest)) {
+    throw new Error(`TEST_FILE_NOT_FOUND: ${parsed.test}`);
+  }
+
+  const runId = generateRunId();
+  const traceId = generateTraceId();
+  const evidenceDir = resolve(config.evidenceRootDir, runId);
+  mkdirSync(evidenceDir, { recursive: true });
+
+  const testStartMs = Date.now();
+  const testSummary = await runPlaywright({
+    test: parsed.test,
+    traceId,
+    runId,
+    evidenceDir,
+  });
+  const testEndMs = Date.now();
+
+  const signozConfig: { baseUrl: string; apiKey?: string } = { baseUrl: config.signozBaseUrl };
+  if (config.signozApiKey) signozConfig.apiKey = config.signozApiKey;
+  const signozClient = new SigNozClient(signozConfig);
+
+  const gathered = await gatherEvidence({
+    runId,
+    traceId,
+    evidenceDir,
+    testSummary,
+    changedFiles: parsed.changed_files,
+    intent: parsed.intent,
+    signozClient,
+    testStartMs,
+    testEndMs,
+  });
+  const { evidence } = gathered;
+
+  const rankedPacket = rank(evidence);
+  persistRun({ runId, traceId, status: testSummary.status });
+
+  const intentHint = computeIntentHint(evidence);
+
+  return {
+    run_id: runId,
+    trace_id: traceId,
+    test_status: testSummary.status,
+    test_summary: {
+      file: parsed.test,
+      name: testSummary.name,
+      duration_ms: testSummary.duration_ms,
+      steps_executed: testSummary.steps_executed,
+      failure_message: testSummary.failure_message,
+    },
+    evidence_summary: summarizeEvidence(evidence, rankedPacket.tier1.length),
+    coverage: evidence.coverage,
+    ranked_packet: rankedPacket,
+    intent_hint: intentHint,
+    evidence_path: evidenceDir,
+  };
+}
+
+function summarizeEvidence(evidence: RawEvidence, tier1Count: number) {
+  let error_spans = 0;
+  let http_5xx = 0;
+  let http_4xx = 0;
+  for (const span of evidence.spans) {
+    if (span.status === 'ERROR') error_spans++;
+    const codeAttr = span.attributes['http.status_code'];
+    const code = typeof codeAttr === 'number' ? codeAttr : Number(codeAttr);
+    if (Number.isFinite(code)) {
+      if (code >= 500) http_5xx++;
+      else if (code >= 400) http_4xx++;
+    }
+  }
+  let error_logs = 0;
+  for (const log of evidence.logs) {
+    if (log.level === 'error' || log.level === 'fatal') error_logs++;
+  }
+  let page_errors = 0;
+  for (const event of evidence.browser_events) {
+    if (event.kind === 'page_error') page_errors++;
+  }
+  return {
+    tier1_count: tier1Count,
+    error_spans,
+    error_logs,
+    page_errors,
+    http_5xx,
+    http_4xx,
+    incomplete: evidence.incomplete,
+  };
+}
+
+function computeIntentHint(evidence: RawEvidence): IntentHint | undefined {
+  if (!evidence.intent) return undefined;
+  const keywords = evidence.intent
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length >= 4);
+  if (keywords.length === 0) return undefined;
+
+  const match = (s: string) => {
+    const lower = s.toLowerCase();
+    return keywords.some((k) => lower.includes(k));
+  };
+
+  const relevant_spans: string[] = [];
+  for (const span of evidence.spans) {
+    if (match(span.name)) {
+      relevant_spans.push(span.span_id);
+      continue;
+    }
+    for (const v of Object.values(span.attributes)) {
+      if (typeof v === 'string' && match(v)) {
+        relevant_spans.push(span.span_id);
+        break;
+      }
+    }
+  }
+
+  const relevant_logs: string[] = [];
+  for (const log of evidence.logs) {
+    if (match(log.body)) relevant_logs.push(`${log.service}:${log.ts}`);
+  }
+
+  if (relevant_spans.length === 0 && relevant_logs.length === 0) {
+    return {
+      relevant_spans: [],
+      relevant_logs: [],
+      note: 'No spans or logs matched the stated intent — the test may not have exercised the intended path.',
+    };
+  }
+  return { relevant_spans, relevant_logs };
+}
