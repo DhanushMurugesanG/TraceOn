@@ -1,4 +1,6 @@
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import type { TestSummary } from '@traceon/core';
 
 export interface RunPlaywrightOptions {
@@ -24,17 +26,34 @@ function classifyStatus(exitCode: number | null, raw?: string): TestSummary['sta
   return 'failed';
 }
 
+// Walk up from the test file looking for the nearest package.json. That's
+// the directory Playwright (and pnpm exec) needs as its cwd so it can find
+// the locally installed @playwright/test binary and resolve the config file.
+function findProjectRoot(filePath: string): string {
+  let dir = dirname(filePath);
+  while (true) {
+    if (existsSync(join(dir, 'package.json'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return dirname(filePath);
+    dir = parent;
+  }
+}
+
 export function runPlaywright(opts: RunPlaywrightOptions): Promise<TestSummary> {
   return new Promise((resolvePromise) => {
     const startTs = Date.now();
+    const absoluteTest = isAbsolute(opts.test) ? opts.test : resolve(opts.test);
+    const projectRoot = opts.cwd ?? findProjectRoot(absoluteTest);
+    const relativeTest = relative(projectRoot, absoluteTest);
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       TRACEON_TRACE_ID: opts.traceId,
       TRACEON_RUN_ID: opts.runId,
       TRACEON_EVIDENCE_DIR: opts.evidenceDir,
     };
-    const child = spawn('npx', ['playwright', 'test', opts.test, '--reporter=json'], {
-      cwd: opts.cwd,
+    const child = spawn('pnpm', ['exec', 'playwright', 'test', relativeTest, '--reporter=json'], {
+      cwd: projectRoot,
       env,
     });
 
