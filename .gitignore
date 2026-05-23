@@ -9,6 +9,7 @@ coverage/
 .env.local
 .traceon/
 *.db
+.dev/
 
 # Local-only personal note (Claude config restore), not project docs
 docs/restore-claude.md
