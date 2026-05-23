@@ -132,3 +132,27 @@ Reasons:
 Both would be defensible. Go has better OTel auto-instrumentation. Rust has better performance. Neither matters enough to justify the cognitive cost of context-switching languages on a solo evening build.
 
 The sample app could be in Go for v2 (better OTel auto-instrumentation for Go users). For v1, TypeScript is the right choice because it minimizes the languages the solo builder has to keep in their head.
+
+## v1.1 candidates from first real test (2026-05-23)
+
+From failure-path testing on the spike:
+
+1. **60s trace wait for frontend-only tests.** `waitForTraceComplete` waits
+   the full `maxWaitMs: 60_000` even when no backend spans will ever arrive.
+   Fix: expose `max_wait_ms` per call, or short-circuit when browser events
+   show no network activity.
+
+2. **ANSI codes in failure messages.** Playwright's failure output contains
+   terminal color codes (`\u001b[2m` etc.) that reach the agent as noise.
+   Fix: strip ANSI in the result serializer before the ranker receives it.
+
+3. **`incomplete: true` is ambiguous.** Currently fires for both "trace was
+   truncated mid-flight" and "no trace activity at all." Skill decision rules
+   can't distinguish without reading deeper evidence.
+   Fix: add `incomplete_reason: "truncated" | "no_activity"` to the result.
+
+4. **Coverage empty when only test file in `changed_files`.** Test files are
+   filtered out by the `.spec.` pattern, so passing just the test produces
+   empty coverage with no explanation.
+   Fix: skill guidance — always pass implementation files, not test files, in
+   `changed_files`. Or: coverage should explain why hits/misses are empty.
