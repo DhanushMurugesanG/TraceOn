@@ -119,13 +119,74 @@ If all of these are true:
 Be specific about what was verified. "Verified" alone isn't useful — the
 user wants to know what TraceOn actually saw.
 
+### When the test passes with no network activity (UI-only test)
+
+If `test_status === "passed"` AND `evidence_summary.no_trace_activity === true`:
+
+This is a UI-only test that never fired a backend request. Common cases:
+
+- Adding or removing a static UI element
+- Local state behavior — filters, toggles, validation messages
+- Pure CSS or styling changes
+- Component-level interactions that don't reach the network
+
+What you'll typically see in the evidence:
+
+- 0 spans (the trace is empty by design)
+- 0 errors of every flavor
+- `coverage.warnings` may reference backend files in `changed_files` —
+  ignore those, since no backend was exercised
+- `coverage.attribution_limited === false` (nothing to attribute either way)
+- The verify call returns in ~2 seconds rather than waiting 60s for a
+  trace that will never arrive
+
+If `evidence_summary.tier1_count === 0`:
+
+**Declare done** with a brief note that backend tracing wasn't exercised:
+
+> Verified. The test was UI-only — no fetches fired, so backend tracing
+> didn't activate. That's expected for changes that don't cross frontend
+> and backend.
+>
+> Evidence at: [evidence_path]
+
+If `tier1_count > 0` (page errors caught by the browser-side fixture
+without any network call), apply the "failed with a clear cause" rules
+below to the items in Tier 1.
+
 ### When the test passes but coverage shows misses
 
-If `test_status === "passed"` AND `coverage.warnings.length > 0`:
+If `test_status === "passed"` AND `coverage.warnings.length > 0`,
+**check `coverage.attribution_limited` first**.
 
-**Do not declare done.** A passing test with coverage warnings is the
-silent failure mode TraceOn exists to catch. The test ran successfully,
-but the runtime evidence suggests your change may not have been exercised.
+#### Case A: `coverage.attribution_limited === true`
+
+The warning is almost certainly the **OpenTelemetry file-attribution
+gap**, not a real missed code path. Execution evidence exists (the trace
+has spans), but file-level attribution didn't fire — this is a known
+OpenTelemetry limitation where backend spans are attributed to the
+route/framework, not to the specific source file that ran.
+
+If the test asserted on a real response body or on DOM populated by a
+real fetch, the changed code clearly ran. The warning is a false alarm.
+
+**Declare done** with a brief note acknowledging the attribution gap:
+
+> Verified. The change ran end-to-end — the test asserted on real
+> response data and TraceOn saw [N] spans across the call. Coverage
+> attribution didn't light up for [file], but that's the known OpenTelemetry
+> file-attribution gap, not a missed code path.
+>
+> Evidence at: [evidence_path]
+
+Do NOT surface this case to the user as an open question. The evidence
+is sufficient; surfacing every time creates noise that erodes trust in
+TraceOn's signals.
+
+#### Case B: `coverage.attribution_limited === false`
+
+The warning is a **real miss** — no execution evidence at all for the
+changed code. This is the silent failure mode TraceOn exists to catch.
 
 This typically means one of:
 
@@ -133,26 +194,23 @@ This typically means one of:
 - The frontend served a cached or stubbed value without calling the
   backend
 - The test exercised a different code path than the one you modified
-- The backend instrumentation didn't attribute spans to the changed file
-  (a known OpenTelemetry limitation — not always a real problem)
 
-Surface to the user with three options. Use this framing:
+**Do not declare done.** Surface to the user with three options:
 
-> The test passed, but I'm not fully confident your change was exercised.
+> The test passed, but I'm not confident your change was exercised.
 > Specifically:
 > - [paste the exact warnings from coverage.warnings]
 >
 > The test ran and the UI behaved correctly, but the runtime evidence
-> doesn't clearly show [the changed file] was invoked. This could mean
-> the test isn't exercising the right path, or it could be a false alarm
-> if the change is in code that doesn't produce its own spans.
+> doesn't show [the changed file] being invoked at all — and there's no
+> attribution-gap caveat to explain it away.
 >
 > How would you like to proceed?
 > 1. Trust the green test and consider this done
 > 2. Update the test to exercise [the changed file] more directly
 > 3. Investigate manually before proceeding
 
-Wait for the user's choice. Do not auto-select option 1 even if the test
+Wait for the user's choice. Do not auto-select option 1 even if the
 result looks correct to you.
 
 ### When the test failed with a clear cause in your changed code
@@ -268,32 +326,92 @@ direction.
 
 ### When the tool itself errors
 
-If `traceon_verify` returns an error code rather than a VerificationResult
-(e.g., `TRACE_BACKEND_UNREACHABLE`, `PLAYWRIGHT_SPAWN_FAILED`,
-`TEST_FILE_NOT_FOUND`):
+If the tool result is `{ isError: true }` and `content[0].text` parses
+as JSON with shape `{ code, message, userGuidance }`, you've hit a
+structured TraceOn error. **Match on `code`** and apply the per-code
+framing below. Do NOT attempt to fix the infrastructure yourself
+unless the user explicitly approves.
 
-**Surface immediately. Do not attempt to fix the infrastructure.**
+#### `code === "TEST_FILE_NOT_FOUND"`
 
-These errors mean TraceOn's infrastructure isn't working — SigNoz is
-down, Playwright isn't installed, the test file is missing. These are
-not problems you can solve by editing source code.
+The test path you passed doesn't exist on disk. Either the path was
+wrong, the test wasn't saved, or it's in a different directory.
 
-Use this framing:
+Surface:
 
-> I can't verify this change because TraceOn's infrastructure isn't
-> responding correctly:
+> The test file I passed doesn't exist:
+> - [message]
+> - [userGuidance]
 >
-> - Error: [the error message]
->
-> This isn't a bug in the feature — it's a TraceOn setup issue.
-> [Specific guidance based on the error, e.g., "Please check that SigNoz
-> is running at localhost:8080" or "Please install Playwright in the
-> project."]
->
-> Once that's resolved, ask me to try the verification again.
+> Did you mean a different path, or should I look for the test elsewhere
+> in the repo?
 
-Do not modify TraceOn's connector code or attempt to "work around" the
-infrastructure issue. The user controls the infrastructure.
+#### `code === "PLAYWRIGHT_SPAWN_FAILED"`
+
+Playwright isn't installed in the project, or `pnpm` is missing from
+PATH. Environment setup issue, not a code issue.
+
+Surface:
+
+> I can't run the test because Playwright isn't available:
+> - [message]
+> - [userGuidance]
+>
+> Once Playwright is installed, ask me to retry the verification.
+
+Do NOT run `pnpm add -D @playwright/test` yourself unless the user
+explicitly approves — that modifies dependencies, which is a deliberate
+action the user owns.
+
+#### `code === "TRACE_BACKEND_UNREACHABLE"`
+
+SigNoz isn't responding at the configured URL. TraceOn needs SigNoz
+to capture trace evidence.
+
+Surface:
+
+> I can't verify because SigNoz isn't responding:
+> - [message]
+> - [userGuidance]
+>
+> Once SigNoz is up, ask me to retry.
+
+Do NOT attempt to start SigNoz or modify Docker yourself.
+
+#### `code === "RANKER_TIER1_OVERFLOW"`
+
+The trace returned more high-priority items than the token budget can
+hold. The system is in a **severely degraded state** with cascading
+failures across many spans/logs/services. Iterating on the change will
+not help — the underlying issue isn't in your code.
+
+Surface immediately with strong language:
+
+> TraceOn returned a Tier 1 overflow — the trace contained more errors
+> and HTTP failures than the budget can hold. The system appears to be
+> in a degraded state with cascading failures.
+>
+> - [message]
+>
+> This isn't a bug in my change. Iterating won't help. Please investigate
+> SigNoz directly before making any further changes.
+
+#### `code === "EVIDENCE_DIR_WRITE_FAILED"`
+
+TraceOn couldn't write the evidence directory — usually a permissions
+or disk-space issue.
+
+Surface:
+
+> I can't write the evidence directory:
+> - [message]
+> - [userGuidance]
+
+#### Unknown code
+
+If `code` doesn't match any of the above, treat as a generic tool
+error: surface with the message and userGuidance verbatim and ask the
+user how to proceed. Do NOT guess at the cause.
 
 ## What NOT to do
 
