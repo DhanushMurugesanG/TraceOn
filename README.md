@@ -28,48 +28,28 @@ Alpha. v1 ships with:
 
 ## Quick start
 
-### 1. Clone, install, build
-
-```bash
-git clone <repo-url> TraceOn
-cd TraceOn
-pnpm install
-pnpm -r build
-```
-
-### 2. Start SigNoz
+### 1. Start SigNoz
 
 Follow the [SigNoz Docker install guide](https://signoz.io/docs/install/docker/). Verify it's running at `http://localhost:8080`. Sign up locally and generate an API key under **Settings → API Keys**.
 
-### 3. Register TraceOn with Claude Code
-
-Edit your `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "traceon": {
-      "command": "node",
-      "args": ["/absolute/path/to/TraceOn/packages/mcp/dist/index.js"],
-      "env": {
-        "SIGNOZ_API_KEY": "<your-signoz-api-key>",
-        "SIGNOZ_BASE_URL": "http://localhost:8080"
-      }
-    }
-  }
-}
-```
-
-**Fully quit Claude Code** (Cmd+Q on macOS — not just close window) and reopen. The `traceon_verify` tool should now appear in Claude's tool list.
-
-### 4. Install the skill in your project
-
-The skill teaches Claude when and how to call TraceOn. Copy it into your project's `.claude/skills/`:
+### 2. Install TraceOn
 
 ```bash
-mkdir -p <your-project>/.claude/skills/traceon-verify
-cp skills/traceon-verify/SKILL.md <your-project>/.claude/skills/traceon-verify/
+npm install -g traceon-cli
 ```
+
+### 3. Initialize in your project
+
+```bash
+cd your-project
+traceon init
+```
+
+`init` prompts for your SigNoz API key and base URL, registers the MCP server in Claude Code's `claude_desktop_config.json`, and installs the `traceon-verify` skill into `your-project/.claude/skills/`.
+
+### 4. Restart Claude Code
+
+**Fully quit Claude Code** (Cmd+Q on macOS — not just close window) and reopen it. The `traceon_verify` tool should now appear in Claude's tool list.
 
 ### 5. Try it
 

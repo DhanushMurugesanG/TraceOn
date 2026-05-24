@@ -1,6 +1,6 @@
 {
-  "name": "traceon",
-  "version": "0.0.1",
+  "name": "traceon-cli",
+  "version": "0.0.2",
   "description": "Runtime verification for AI coding agents. MCP server that lets Claude Code verify code changes work end-to-end via Playwright + OpenTelemetry + SigNoz.",
   "keywords": [
     "mcp",
@@ -15,9 +15,11 @@
   ],
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
-    "traceon": "./bin/cli.js"
+    "traceon": "bin/cli.js"
   },
   "files": [
     "bin/",
