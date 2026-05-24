@@ -1,6 +1,8 @@
 node_modules/
 dist/
+lib/
 *.log
+*.tgz
 .DS_Store
 coverage/
 .vscode/
