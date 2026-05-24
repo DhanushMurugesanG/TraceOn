@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import type { TestSummary } from '@traceon/core';
+import { TraceOnError, type TestSummary } from '@traceon/core';
 
 export interface RunPlaywrightOptions {
   test: string;
@@ -39,8 +39,13 @@ function findProjectRoot(filePath: string): string {
   }
 }
 
+function looksLikeMissingBinary(exitCode: number | null, stderr: string): boolean {
+  if (exitCode === 127) return true;
+  return /command not found|ENOENT|cannot find module|not found in path/i.test(stderr);
+}
+
 export function runPlaywright(opts: RunPlaywrightOptions): Promise<TestSummary> {
-  return new Promise((resolvePromise) => {
+  return new Promise((resolvePromise, rejectPromise) => {
     const startTs = Date.now();
     const absoluteTest = isAbsolute(opts.test) ? opts.test : resolve(opts.test);
     const projectRoot = opts.cwd ?? findProjectRoot(absoluteTest);
@@ -63,17 +68,23 @@ export function runPlaywright(opts: RunPlaywrightOptions): Promise<TestSummary> 
     child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     child.on('error', (err) => {
-      resolvePromise({
-        file: opts.test,
-        name: 'unknown',
-        status: 'interrupted',
-        duration_ms: Date.now() - startTs,
-        steps_executed: [],
-        failure_message: `Failed to spawn Playwright: ${err.message}`,
-      });
+      rejectPromise(new TraceOnError(
+        'PLAYWRIGHT_SPAWN_FAILED',
+        `Failed to spawn Playwright: ${err.message}`,
+        'Check that pnpm is installed and on PATH. TraceOn spawns Playwright via `pnpm exec playwright test`.',
+        err,
+      ));
     });
 
     child.on('close', (code) => {
+      if (looksLikeMissingBinary(code, stderr)) {
+        rejectPromise(new TraceOnError(
+          'PLAYWRIGHT_SPAWN_FAILED',
+          `Playwright not available in project: ${projectRoot}`,
+          `Run \`pnpm add -D @playwright/test && pnpm exec playwright install chromium\` in ${projectRoot}.`,
+        ));
+        return;
+      }
       try {
         const report = JSON.parse(stdout) as PWReport;
         const spec = report.suites?.[0]?.specs?.[0];

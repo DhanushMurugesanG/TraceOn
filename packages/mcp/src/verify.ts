@@ -5,6 +5,8 @@ import {
   rank,
   SigNozClient,
   gatherEvidence,
+  RankerTier1OverflowError,
+  TraceOnError,
   type VerificationResult,
   type RawEvidence,
   type IntentHint,
@@ -47,13 +49,26 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
 
   const resolvedTest = resolve(parsed.test);
   if (!existsSync(resolvedTest)) {
-    throw new Error(`TEST_FILE_NOT_FOUND: ${parsed.test}`);
+    throw new TraceOnError(
+      'TEST_FILE_NOT_FOUND',
+      `Test file not found: ${parsed.test}`,
+      `Check the path is correct relative to the project root. Resolved to: ${resolvedTest}`,
+    );
   }
 
   const runId = generateRunId();
   const traceId = generateTraceId();
   const evidenceDir = resolve(config.evidenceRootDir, runId);
-  mkdirSync(evidenceDir, { recursive: true });
+  try {
+    mkdirSync(evidenceDir, { recursive: true });
+  } catch (err) {
+    throw new TraceOnError(
+      'EVIDENCE_DIR_WRITE_FAILED',
+      `Cannot create evidence directory: ${evidenceDir}`,
+      `Check filesystem permissions for ${config.evidenceRootDir}. ${err instanceof Error ? err.message : ''}`.trim(),
+      err,
+    );
+  }
 
   const testStartMs = Date.now();
   const testSummary = await runPlaywright({
@@ -81,7 +96,20 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
   });
   const { evidence } = gathered;
 
-  const rankedPacket = rank(evidence);
+  let rankedPacket;
+  try {
+    rankedPacket = rank(evidence);
+  } catch (err) {
+    if (err instanceof RankerTier1OverflowError) {
+      throw new TraceOnError(
+        'RANKER_TIER1_OVERFLOW',
+        err.message,
+        `The trace has too many high-priority items (${err.tier1Tokens} tokens vs ${err.budget} budget). The system is likely in a degraded state — investigate SigNoz for cascading failures before iterating.`,
+        err,
+      );
+    }
+    throw err;
+  }
   persistRun({ runId, traceId, status: testSummary.status });
 
   const intentHint = computeIntentHint(evidence);

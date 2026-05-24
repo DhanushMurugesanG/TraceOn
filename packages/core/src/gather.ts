@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'fs';
 import { SigNozClient } from './connectors/signoz.js';
 import { redactObject, type RedactionRecord } from './redact.js';
 import { computeCoverage } from './coverage.js';
+import { TraceOnError } from './errors.js';
 import type { RawEvidence, BrowserEvent, TestSummary, Span, LogRecord } from './types.js';
 
 export interface GatherOptions {
@@ -59,6 +60,14 @@ export async function gatherEvidence(opts: GatherOptions): Promise<GatherResult>
   let complete = true;
 
   if (hasNetworkActivity) {
+    const health = await opts.signozClient.health();
+    if (!health.ok) {
+      throw new TraceOnError(
+        'TRACE_BACKEND_UNREACHABLE',
+        `SigNoz at ${opts.signozClient.config.baseUrl} is not responding`,
+        `Start SigNoz with \`docker compose up -d\` and verify at ${opts.signozClient.config.baseUrl}. If the URL is wrong, set SIGNOZ_BASE_URL in the MCP server env.`,
+      );
+    }
     const wait = await opts.signozClient.waitForTraceComplete(opts.traceId);
     complete = wait.complete;
     rawSpans = await opts.signozClient.fetchSpans(opts.traceId);

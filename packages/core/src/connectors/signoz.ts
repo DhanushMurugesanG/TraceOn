@@ -129,7 +129,24 @@ function parseEvents(raw: unknown): SpanEvent[] {
 }
 
 export class SigNozClient {
-  constructor(private readonly config: SigNozConfig) {}
+  constructor(public readonly config: SigNozConfig) {}
+
+  /**
+   * Cheap unauthenticated health probe. Returns ok=true with the SigNoz
+   * version when the API is reachable, ok=false otherwise. Used as a
+   * pre-flight before gatherEvidence so we fail fast with a clear error
+   * rather than 60s of polling timeouts.
+   */
+  async health(): Promise<{ ok: boolean; version?: string }> {
+    try {
+      const res = await fetch(`${this.config.baseUrl}/api/v1/version`);
+      if (!res.ok) return { ok: false };
+      const data = (await res.json()) as { version?: string };
+      return data.version ? { ok: true, version: data.version } : { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
 
   private headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };

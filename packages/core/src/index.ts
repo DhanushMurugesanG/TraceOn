@@ -7,3 +7,5 @@ export type { RedactionRecord, RedactResult } from './redact.js';
 export { computeCoverage } from './coverage.js';
 export { gatherEvidence } from './gather.js';
 export type { GatherOptions, GatherResult } from './gather.js';
+export { TraceOnError } from './errors.js';
+export type { TraceOnErrorCode } from './errors.js';
