@@ -71,6 +71,13 @@ export interface CoverageInfo {
   hits: string[];          // file paths that had spans
   misses: string[];        // changed files with zero spans
   warnings: string[];      // human-readable concerns
+  /**
+   * True when the trace contains execution evidence (spans) but file-level
+   * attribution didn't fire for one or more backend files in `misses`. This
+   * is typically an OpenTelemetry attribution gap, not a sign the code
+   * didn't run — agents should treat misses as low-confidence when set.
+   */
+  attribution_limited: boolean;
 }
 
 export interface RawEvidence {
@@ -84,6 +91,8 @@ export interface RawEvidence {
   changed_files: string[];
   intent?: string;
   incomplete: boolean;     // true if trace wait timed out
+  /** True when the test produced zero network activity (no fetch fired). */
+  no_trace_activity: boolean;
 }
 
 /**
@@ -138,6 +147,7 @@ export interface VerificationResult {
     http_5xx: number;
     http_4xx: number;
     incomplete: boolean;
+    no_trace_activity: boolean;
   };
 
   coverage: CoverageInfo;

@@ -134,6 +134,7 @@ function summarizeEvidence(evidence: RawEvidence, tier1Count: number) {
     http_5xx,
     http_4xx,
     incomplete: evidence.incomplete,
+    no_trace_activity: evidence.no_trace_activity,
   };
 }
 

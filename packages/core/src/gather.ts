@@ -48,14 +48,25 @@ function readBrowserEvents(path: string): BrowserEvent[] {
 }
 
 export async function gatherEvidence(opts: GatherOptions): Promise<GatherResult> {
-  const { complete } = await opts.signozClient.waitForTraceComplete(opts.traceId);
-
-  const rawSpans = await opts.signozClient.fetchSpans(opts.traceId);
-  const rawLogs = await opts.signozClient.fetchLogs(opts.traceId, {
-    startMs: opts.testStartMs - 30_000,
-    endMs: opts.testEndMs + 60_000,
-  });
+  // Read browser events first so we can decide whether to wait on SigNoz at all.
+  // If the test never fired a fetch, no backend trace will arrive — skip the
+  // 60s wait + the trace/log fetches entirely.
   const rawBrowserEvents = readBrowserEvents(`${opts.evidenceDir}/browser_events.jsonl`);
+  const hasNetworkActivity = rawBrowserEvents.some((e) => e.kind === 'network');
+
+  let rawSpans: Span[] = [];
+  let rawLogs: LogRecord[] = [];
+  let complete = true;
+
+  if (hasNetworkActivity) {
+    const wait = await opts.signozClient.waitForTraceComplete(opts.traceId);
+    complete = wait.complete;
+    rawSpans = await opts.signozClient.fetchSpans(opts.traceId);
+    rawLogs = await opts.signozClient.fetchLogs(opts.traceId, {
+      startMs: opts.testStartMs - 30_000,
+      endMs: opts.testEndMs + 60_000,
+    });
+  }
 
   const spansR = redactObject<Span[]>(rawSpans, '$.spans');
   const logsR = redactObject<LogRecord[]>(rawLogs, '$.logs');
@@ -74,6 +85,7 @@ export async function gatherEvidence(opts: GatherOptions): Promise<GatherResult>
     changed_files: opts.changedFiles,
     intent: opts.intent,
     incomplete: !complete,
+    no_trace_activity: !hasNetworkActivity,
   };
 
   return { evidence, redactions: [...spansR.records, ...logsR.records, ...browserR.records] };
