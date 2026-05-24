@@ -44,10 +44,11 @@ should:
 - Make real HTTP requests — do NOT mock the backend, TraceOn needs
   actual backend evidence
 
-Example structure:
+Example structure (the fixture file is dropped into `tests/` by
+`traceon init` — import it as a relative path):
 
 ```typescript
-import { test, expect } from '@traceon/playwright';
+import { test, expect } from './traceon-fixture.js';
 
 test('feature works end to end', async ({ page }) => {
   await test.step('Navigate to feature', async () => {

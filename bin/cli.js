@@ -13,8 +13,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(__dirname, '..');
 const mcpServerPath = join(packageRoot, 'dist', 'mcp.js');
 const skillSource = join(packageRoot, 'skills', 'traceon-verify', 'SKILL.md');
+const fixtureSource = join(packageRoot, 'lib', 'playwright-fixture.js');
 
 const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf-8'));
+
+function projectHasPlaywright(cwd) {
+  const pkgJsonPath = join(cwd, 'package.json');
+  if (!existsSync(pkgJsonPath)) return false;
+  try {
+    const projPkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
+    const deps = { ...(projPkg.dependencies ?? {}), ...(projPkg.devDependencies ?? {}) };
+    return Boolean(deps['@playwright/test']);
+  } catch {
+    return false;
+  }
+}
 
 function claudeDesktopConfigPath() {
   const p = platform();
@@ -37,6 +50,10 @@ async function init() {
   }
   if (!existsSync(skillSource)) {
     console.error(`Skill file not found at ${skillSource}.`);
+    process.exit(1);
+  }
+  if (!existsSync(fixtureSource)) {
+    console.error(`Playwright fixture not found at ${fixtureSource}.`);
     process.exit(1);
   }
 
@@ -85,11 +102,27 @@ async function init() {
   copyFileSync(skillSource, skillDest);
   console.log(`[ok] Installed traceon-verify skill at ${skillDest}`);
 
-  // 3. Next steps
+  // 3. Copy the Playwright fixture into the project's tests/ directory.
+  // Tests will import it as `import { test, expect } from './traceon-fixture.js'`.
+  const fixtureDest = join(process.cwd(), 'tests', 'traceon-fixture.js');
+  mkdirSync(dirname(fixtureDest), { recursive: true });
+  copyFileSync(fixtureSource, fixtureDest);
+  console.log(`[ok] Installed Playwright fixture at ${fixtureDest}`);
+
+  // 4. Detect whether @playwright/test is already installed in this project.
+  const hasPlaywright = projectHasPlaywright(process.cwd());
+
+  // 5. Next steps
   console.log('\nNext steps:');
-  console.log('  1. Fully quit Claude Code (Cmd+Q on macOS, not just close the window) and reopen it.');
-  console.log('  2. Verify the traceon_verify tool appears in the tool list.');
-  console.log('  3. Ask Claude to add a feature in this project and TraceOn will verify it.');
+  let stepN = 1;
+  if (!hasPlaywright) {
+    console.log(`  ${stepN++}. Install Playwright in this project:`);
+    console.log('       pnpm add -D @playwright/test     (or `npm install --save-dev @playwright/test`)');
+    console.log('       pnpm exec playwright install chromium');
+  }
+  console.log(`  ${stepN++}. Fully quit Claude Code (Cmd+Q on macOS, not just close the window) and reopen it.`);
+  console.log(`  ${stepN++}. Verify the traceon_verify tool appears in the tool list.`);
+  console.log(`  ${stepN++}. Ask Claude to add a feature in this project and TraceOn will verify it.`);
 }
 
 function usage() {
