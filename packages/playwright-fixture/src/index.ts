@@ -59,15 +59,12 @@ export const test = base.extend<TraceOnFixtures>({
       });
 
       page.on('response', (response) => {
-        const status = response.status();
-        if (status >= 400) {
-          appendEvent(eventsPath, {
-            kind: 'network',
-            ts: Date.now(),
-            url: response.url(),
-            status,
-          });
-        }
+        appendEvent(eventsPath, {
+          kind: 'network',
+          ts: Date.now(),
+          url: response.url(),
+          status: response.status(),
+        });
       });
 
       await use();
