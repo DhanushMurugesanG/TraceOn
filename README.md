@@ -25,6 +25,14 @@ Alpha. v1 ships with:
 - Claude Code (with MCP server support)
 - A SigNoz API key (generate at `localhost:8080` → Settings → API Keys)
 - A web app with a frontend that talks to an OTel-instrumented backend
+- **If frontend and backend live on different origins**, the backend's CORS
+  policy must include `traceparent` (and `tracestate` if you use W3C trace
+  context) in `Access-Control-Allow-Headers`. Without that, the browser
+  blocks every request TraceOn's Playwright fixture tries to inject the
+  trace-propagation header into — the test will see no backend spans even
+  though the UI looks fine. If you don't control the backend's CORS config,
+  TraceOn's UI-level evidence still works; the backend trace correlation
+  doesn't.
 
 ## Quick start
 

@@ -498,6 +498,96 @@ Do NOT bypass this by writing a test that calls the backend directly via
 fetch. TraceOn's value depends on real end-to-end exercise. Backend-only
 tests via fetch lose the browser-side evidence.
 
+### Authenticated apps (token required)
+
+If the app under test requires authentication for the route the Playwright
+test will hit, the test must establish a session before it can navigate
+to any protected page. **Do not skip this step** — without it, the test
+will silently fail because the app redirects to the login page and your
+selectors won't find the protected UI.
+
+The failure mode usually looks like: you navigate to a protected route,
+then `expect(...).toBeVisible()` times out on selectors that should be on
+that page, and a saved screenshot shows the login form instead.
+
+When you suspect auth is needed:
+
+1. **Stop and prompt the user.** Auth is environment-specific — you
+   cannot guess the token store, refresh-token flow, or user-shape
+   conventions. Ask:
+
+   > The route this test exercises looks auth-protected. To run the test
+   > end-to-end I need a valid session token (e.g. a JWT) for this app.
+   > Could you paste a non-expired token here? I'll embed it directly
+   > in the test as a local-dev fallback. (Treat it like a secret — don't
+   > commit the test to a public repo with a real token in it.)
+
+2. **Once the user provides a token**, seed the browser's `localStorage`
+   via `page.addInitScript` BEFORE navigating to the first protected
+   page, matching the keys the app's auth store reads from. Common
+   patterns:
+
+   - `localStorage.setItem('kc-token', '<jwt>')` — Keycloak adapters
+   - `localStorage.setItem('access_token', '<jwt>')` — generic JWT stores
+   - You may also need `kc-refreshToken`, `user`, `account`, etc. —
+     match what the app actually reads. Grep the app's auth context or
+     token-storage helper to find the keys.
+
+3. **Inline the token directly in the test** rather than reading from
+   `process.env`. TraceOn's runner and the skill's iteration loop do not
+   reliably forward env vars to Playwright's process; an inlined token
+   always works and is the accepted pattern for local-dev verification.
+
+4. **Always add a fail-fast guard** at the top of the test:
+
+   ```typescript
+   const AUTH_TOKEN = '<jwt-here>';
+   if (!AUTH_TOKEN || AUTH_TOKEN.length < 20) {
+     throw new Error('Auth token required — paste a fresh JWT into the test.');
+   }
+   ```
+
+   That way, when the token expires later, the test fails with a clear
+   message instead of "selector not visible after 20s."
+
+The first time you hit auth on a new project, this is environment
+discovery — it's reasonable to spend a couple of iterations finding the
+right localStorage keys. Once it works, those keys are stable; future
+tests in the same project can copy the working seed block.
+
+### When the test fires backend requests but `no_trace_activity` is still true
+
+If the test clicked a Save button or submitted a form (something that
+SHOULD have fired a real backend request), but `evidence_summary.no_trace_activity === true`:
+
+The request never reached the backend's instrumented code path. The most
+common cause is **CORS blocking the `traceparent` header** that TraceOn's
+Playwright fixture injects on every browser request. If the backend's
+`Access-Control-Allow-Headers` doesn't include `traceparent`, the browser
+rejects the request before sending it — your code never runs, so no spans
+get created.
+
+Look at the browser console events in Tier 2 / Tier 3 evidence: messages
+mentioning `blocked by CORS policy` or `Access-Control-Allow-Headers`
+confirm this.
+
+**Surface to the user with a specific fix:**
+
+> The test fired requests but no backend spans were captured. The browser
+> console shows CORS blocking the `traceparent` header that TraceOn
+> injects — your backend doesn't list `traceparent` in its
+> `Access-Control-Allow-Headers`.
+>
+> To fix, add `traceparent` (and `tracestate` if you use W3C trace
+> context) to your backend's CORS allow-headers config. Once that's in
+> place, retry the verification.
+>
+> Until then, the test may still pass UI-wise, but TraceOn can't capture
+> backend evidence — so I can't honestly confirm the changed code ran.
+
+Do NOT modify the backend's CORS config yourself — that's user
+infrastructure with security implications.
+
 ### Backend-only changes that don't affect the UI
 
 If the change is purely backend (e.g., a new internal API endpoint that
