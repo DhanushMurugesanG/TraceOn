@@ -8,8 +8,8 @@
     "traceon-mcp": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0"
+    "@types/better-sqlite3": "^7.6.0",
+    "vitest": "^2.0.0"
   }
 }
