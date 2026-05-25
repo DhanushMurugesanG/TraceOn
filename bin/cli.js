@@ -40,6 +40,33 @@ function claudeDesktopConfigPath() {
   throw new Error(`TraceOn doesn't support ${p} yet. macOS and Linux only.`);
 }
 
+// Claude Code (the CLI, not the Desktop app) reads ~/.claude.json across all
+// platforms. user-scope mcpServers live at the top level of that file.
+function claudeCodeConfigPath() {
+  return join(homedir(), '.claude.json');
+}
+
+// Write the traceon server entry into a Claude config file, preserving any
+// other keys / servers already present. Creates parent dirs and the file if
+// missing. Returns the path written.
+function writeMcpServerToConfig(cfgPath, serverEntry) {
+  mkdirSync(dirname(cfgPath), { recursive: true });
+  let config = {};
+  if (existsSync(cfgPath)) {
+    try {
+      config = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+    } catch {
+      console.error(`Existing Claude config at ${cfgPath} is not valid JSON.`);
+      console.error('Move or fix it before running init.');
+      process.exit(1);
+    }
+  }
+  config.mcpServers = config.mcpServers ?? {};
+  config.mcpServers.traceon = serverEntry;
+  writeFileSync(cfgPath, JSON.stringify(config, null, 2) + '\n');
+  return cfgPath;
+}
+
 async function init() {
   console.log(`traceon v${pkg.version} — init\n`);
 
@@ -71,21 +98,12 @@ async function init() {
     rl.close();
   }
 
-  // 1. Update Claude Code's MCP config
-  const cfgPath = claudeDesktopConfigPath();
-  mkdirSync(dirname(cfgPath), { recursive: true });
-  let config = {};
-  if (existsSync(cfgPath)) {
-    try {
-      config = JSON.parse(readFileSync(cfgPath, 'utf-8'));
-    } catch {
-      console.error(`Existing Claude Code config at ${cfgPath} is not valid JSON.`);
-      console.error('Move or fix it before running init.');
-      process.exit(1);
-    }
-  }
-  config.mcpServers = config.mcpServers ?? {};
-  config.mcpServers.traceon = {
+  // 1. Register the MCP server with BOTH Claude products — Claude Desktop
+  // (the GUI app at ~/Library/Application Support/Claude/...) and Claude
+  // Code (the CLI at ~/.claude.json). They use different config files even
+  // though both are called "Claude". Writing to both is harmless if the
+  // user only has one installed — the unused config file just sits there.
+  const serverEntry = {
     command: 'node',
     args: [mcpServerPath],
     env: {
@@ -93,8 +111,10 @@ async function init() {
       SIGNOZ_BASE_URL: baseUrl,
     },
   };
-  writeFileSync(cfgPath, JSON.stringify(config, null, 2) + '\n');
-  console.log(`\n[ok] Registered traceon MCP server in ${cfgPath}`);
+  const desktopPath = writeMcpServerToConfig(claudeDesktopConfigPath(), serverEntry);
+  console.log(`\n[ok] Registered traceon in Claude Desktop config: ${desktopPath}`);
+  const codePath = writeMcpServerToConfig(claudeCodeConfigPath(), serverEntry);
+  console.log(`[ok] Registered traceon in Claude Code config:    ${codePath}`);
 
   // 2. Copy the skill into the current project's .claude/skills/
   const skillDest = join(process.cwd(), '.claude', 'skills', 'traceon-verify', 'SKILL.md');
