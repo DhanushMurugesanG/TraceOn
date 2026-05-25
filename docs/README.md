@@ -1,3 +1,18 @@
 # docs
 
 Design notes, architecture writeups, and reference material for TraceOn.
+
+## Setup guides
+
+- [auth-and-cors-setup.md](auth-and-cors-setup.md) — two common gotchas
+  when pointing TraceOn at a real-world app: auth-protected backends
+  (token handling) and `traceparent` CORS allow-headers.
+- [first-run-experience.md](first-run-experience.md) — an unedited
+  user postmortem from a first run on a production-shaped app: the
+  friction we've since fixed, and the moment TraceOn pays for itself.
+
+## Design / architecture
+
+- [architecture-decisions.md](architecture-decisions.md)
+- [observability-stack-decisions.md](observability-stack-decisions.md)
+- [ranker-design-notes.md](ranker-design-notes.md)

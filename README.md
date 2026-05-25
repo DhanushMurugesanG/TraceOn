@@ -33,6 +33,9 @@ Alpha. v1 ships with:
   though the UI looks fine. If you don't control the backend's CORS config,
   TraceOn's UI-level evidence still works; the backend trace correlation
   doesn't.
+- **Auth-protected apps** need a one-time test-setup step to seed a session
+  token before navigating to protected routes — see [docs/auth-and-cors-setup.md](docs/auth-and-cors-setup.md)
+  for the workflow and copy-paste snippets.
 
 ## Quick start
 
