@@ -12,6 +12,10 @@ Design notes, architecture writeups, and reference material for TraceOn.
   friction we've since fixed, and the moment TraceOn pays for itself.
 - [feedback-2026-05-26.md](feedback-2026-05-26.md) — second-session
   feedback with a prioritised fix backlog. The "highest-ROI ask" thread.
+- [feedback-2026-05-26-round-2.md](feedback-2026-05-26-round-2.md) —
+  post-v0.0.7 feedback: bimodal ROI take, env-forwarding "bit me
+  again" (skill staleness diagnosis), and the next ship plan (timeout
+  failure surfacing).
 
 ## Design / architecture
 
