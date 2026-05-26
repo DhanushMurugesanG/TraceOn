@@ -10,6 +10,8 @@ Design notes, architecture writeups, and reference material for TraceOn.
 - [first-run-experience.md](first-run-experience.md) — an unedited
   user postmortem from a first run on a production-shaped app: the
   friction we've since fixed, and the moment TraceOn pays for itself.
+- [feedback-2026-05-26.md](feedback-2026-05-26.md) — second-session
+  feedback with a prioritised fix backlog. The "highest-ROI ask" thread.
 
 ## Design / architecture
 
