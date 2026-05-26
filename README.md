@@ -70,6 +70,29 @@ In Claude Code, ask for a small user-facing change in your project — for examp
 
 Claude should write the implementation, write a Playwright test, call `traceon_verify`, read the evidence, and report what was verified. If anything fails, Claude iterates — up to 3 times — based on the Tier 1 evidence.
 
+## Upgrading
+
+`traceon-cli` upgrades via npm:
+
+```bash
+npm install -g traceon-cli@latest
+```
+
+That updates the global binary (so the MCP server picks up the new code on next Claude Code restart), but **does NOT update the agent skill file inside any project**. The skill lives at `<your-project>/.claude/skills/traceon-verify/SKILL.md` and was written by the last `traceon init` run. If the CLI ships new agent instructions (e.g. v0.0.7's `extra_env` support, v0.0.9's skill version stamp) and you don't re-run `traceon init`, the agent in that project still follows the older playbook.
+
+After upgrading, re-run `traceon init` in each project that uses TraceOn:
+
+```bash
+cd your-project
+traceon init    # overwrites .claude/skills/traceon-verify/SKILL.md with the new version
+```
+
+`init` is idempotent: it overwrites the skill, refreshes the MCP server registration in your Claude configs, and re-installs the Playwright fixture. It does NOT touch `.traceon/auth.json` or your test files.
+
+As of v0.0.9, the MCP server compares its bundled skill version against the project's copy on the first `traceon_verify` call after startup and logs a single-line warning to stderr if they don't match. The warning names the exact remediation (`re-run traceon init`).
+
+Then fully quit and reopen Claude Code (`Cmd+Q` on macOS — not just close window) so it reloads the MCP server.
+
 ## How it differs from `/goal`
 
 `/goal` keeps Claude iterating until an evaluator agrees a condition is met. The evaluator reads the conversation transcript only.

@@ -120,7 +120,11 @@ function classifyStatus(exitCode: number | null, raw?: string): TestSummary['sta
 // Walk up from the test file looking for the nearest package.json. That's
 // the directory Playwright needs as its cwd so it can find the locally
 // installed binary and resolve the config file.
-function findProjectRoot(filePath: string): string {
+//
+// Exported so verify.ts can compute the same projectRoot for skill-version
+// checks (no duplication; one source of truth for "what counts as the
+// project root").
+export function findProjectRoot(filePath: string): string {
   let dir = dirname(filePath);
   while (true) {
     if (existsSync(join(dir, 'package.json'))) return dir;

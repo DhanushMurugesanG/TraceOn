@@ -13,8 +13,15 @@ import {
 } from '@traceon/core';
 import { generateRunId, generateTraceId } from './ids.js';
 import { persistRun } from './persistence.js';
-import { runPlaywright } from './playwright.js';
+import { runPlaywright, findProjectRoot } from './playwright.js';
 import { loadConfig } from './config.js';
+import { checkSkillVersion, formatStaleSkillWarning } from './skill-version.js';
+
+// Module-level "have we already checked this server's lifetime" flag.
+// The skill file doesn't change between verify calls in a single MCP
+// server process — checking once is enough, and noisy log lines on every
+// invocation erode trust in the warning.
+let skillVersionChecked = false;
 
 export const verifyToolDefinition = {
   name: 'traceon_verify',
@@ -60,6 +67,20 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
       `Test file not found: ${parsed.test}`,
       `Check the path is correct relative to the project root. Resolved to: ${resolvedTest}`,
     );
+  }
+
+  // Skill-staleness check (once per server lifetime). If the project's
+  // .claude/skills/traceon-verify/SKILL.md is from an older traceon-cli
+  // install, the agent's instructions are out of date — warn the user so
+  // they know to re-run `traceon init`. Soft warning to stderr, never
+  // throws or blocks the verify call.
+  if (!skillVersionChecked) {
+    skillVersionChecked = true;
+    try {
+      const projectRoot = findProjectRoot(resolvedTest);
+      const warning = formatStaleSkillWarning(checkSkillVersion(projectRoot));
+      if (warning) console.error(warning);
+    } catch { /* never let the check block the run */ }
   }
 
   const runId = generateRunId();

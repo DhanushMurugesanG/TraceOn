@@ -1,5 +1,6 @@
 ---
 name: traceon-verify
+version: 0.0.9
 description: Use this skill when implementing or fixing user-facing features in projects that have TraceOn configured. Trigger words include "add", "implement", "build", "create", "fix bug in", or any feature work where behavior changes are observable in a running application. Use it especially when the change crosses frontend and backend, where visual confirmation isn't enough.
 ---
 
