@@ -1,6 +1,7 @@
 // Bundles the MCP server (packages/mcp + its workspace deps) into a single
-// self-contained ESM file at dist/mcp.js. Native deps are kept external so
-// the consumer installs them via package.json `dependencies`.
+// self-contained ESM file at dist/mcp.js, and the doctor preflight runner
+// to dist/doctor.js. Native deps are kept external so the consumer installs
+// them via package.json `dependencies`.
 //
 // Also copies the compiled Playwright fixture from
 // packages/playwright-fixture/dist/index.js to lib/playwright-fixture.js
@@ -13,18 +14,13 @@ import { dirname, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 
-const result = await build({
-  entryPoints: [resolve(repoRoot, 'packages/mcp/src/index.ts')],
+const sharedOpts = {
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node20',
-  outfile: resolve(repoRoot, 'dist/mcp.js'),
   external: ['better-sqlite3'],
   // ESM-friendly require shim so bundled CJS deps can `require` if needed.
-  // The source file already has its own #!/usr/bin/env node shebang —
-  // esbuild preserves it, so we don't add another here (would be a syntax
-  // error on line 2).
   banner: {
     js: [
       'import { createRequire as __traceon_createRequire } from "node:module";',
@@ -33,14 +29,33 @@ const result = await build({
   },
   logLevel: 'info',
   metafile: false,
-});
+};
 
-if (result.errors.length > 0) {
-  console.error('Bundle had errors:', result.errors);
+// 1. MCP server bundle (the long-running process Claude Code spawns).
+const mcpResult = await build({
+  ...sharedOpts,
+  entryPoints: [resolve(repoRoot, 'packages/mcp/src/index.ts')],
+  outfile: resolve(repoRoot, 'dist/mcp.js'),
+});
+if (mcpResult.errors.length > 0) {
+  console.error('MCP bundle had errors:', mcpResult.errors);
   process.exit(1);
 }
-
 console.log('Bundled MCP server -> dist/mcp.js');
+
+// 2. Doctor bundle (one-shot preflight invoked by `traceon doctor`). Same
+//    workspace and externals but a different entry point. Exposes `runDoctor`
+//    as a named export that bin/cli.js dynamically imports.
+const doctorResult = await build({
+  ...sharedOpts,
+  entryPoints: [resolve(repoRoot, 'packages/mcp/src/doctor/index.ts')],
+  outfile: resolve(repoRoot, 'dist/doctor.js'),
+});
+if (doctorResult.errors.length > 0) {
+  console.error('Doctor bundle had errors:', doctorResult.errors);
+  process.exit(1);
+}
+console.log('Bundled doctor runner -> dist/doctor.js');
 
 // Copy the compiled Playwright fixture into lib/ so it ships in the tarball
 // and `traceon init` can write it into the user's project as a regular file.

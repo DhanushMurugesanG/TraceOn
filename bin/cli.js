@@ -152,6 +152,11 @@ Usage:
   traceon init        Register MCP server with Claude Code and install
                       the traceon-verify skill in the current directory.
 
+  traceon doctor      Run preflight checks for the most common setup
+                      issues (Playwright installed, backend CORS allows
+                      traceparent, SigNoz reachable, etc.). Exits 0 if
+                      everything looks good, 1 if any check failed.
+
   traceon --version   Show version.
   traceon --help      Show this message.
 
@@ -159,6 +164,26 @@ Prerequisites for init:
   - SigNoz running locally (or accessible at a URL you'll be prompted for)
   - SigNoz API key (generate at <signoz-url>/settings/api-keys)
   - Claude Code installed`);
+}
+
+const doctorScriptPath = join(packageRoot, 'dist', 'doctor.js');
+
+async function doctor() {
+  if (!existsSync(doctorScriptPath)) {
+    console.error(`Bundled doctor runner not found at ${doctorScriptPath}.`);
+    console.error('This usually means the package install is incomplete. Try reinstalling.');
+    process.exit(1);
+  }
+  // Dynamic import so we don't pay the cost (or the load-time risk) of the
+  // doctor module when other subcommands are invoked.
+  const { runDoctor } = await import(doctorScriptPath);
+  const useColor = Boolean(process.stdout.isTTY) && process.env.NO_COLOR == null;
+  // Unicode glyphs render on every modern terminal we target except old
+  // Windows consoles. Light heuristic: enable everywhere except Win + non-WT.
+  const useUnicode = !(process.platform === 'win32' && !process.env.WT_SESSION);
+  const result = await runDoctor({ cwd: process.cwd(), useColor, useUnicode });
+  process.stdout.write(result.rendered + '\n');
+  process.exit(result.ok ? 0 : 1);
 }
 
 const args = process.argv.slice(2);
@@ -175,6 +200,10 @@ if (!cmd || cmd === '--help' || cmd === '-h') {
 if (cmd === 'init') {
   await init();
   process.exit(0);
+}
+if (cmd === 'doctor') {
+  await doctor();
+  // doctor() handles its own process.exit
 }
 
 console.error(`Unknown command: ${cmd}`);

@@ -70,6 +70,29 @@ In Claude Code, ask for a small user-facing change in your project — for examp
 
 Claude should write the implementation, write a Playwright test, call `traceon_verify`, read the evidence, and report what was verified. If anything fails, Claude iterates — up to 3 times — based on the Tier 1 evidence.
 
+## Troubleshooting
+
+If `traceon_verify` returns confusing errors, empty evidence, or just doesn't seem to be picking your change up, run:
+
+```bash
+traceon doctor
+```
+
+It runs eight preflight checks in ~10 seconds and tells you what's wrong before you try to verify a change:
+
+- **Playwright is installed** in this project
+- **Playwright config is parseable** (extracts baseURL / webServer.url for the next checks)
+- **Frontend reachable** at the baseURL
+- **Backend reachable** at the detected backend URL (from vite proxy, `.env`, or common defaults)
+- **CORS allows `traceparent`** — the biggest silent failure mode; without this, TraceOn sees zero backend spans even though tests "pass"
+- **SigNoz reachable** at the configured URL
+- **MCP server is registered** with Claude Code (`claude mcp list` includes `traceon`)
+- **Skill is up to date** — your project's `.claude/skills/traceon-verify/SKILL.md` matches the bundled version (see "Upgrading" below)
+
+Each failure includes a specific actionable fix — language-specific CORS snippets for gofiber, rs/cors, Node `cors`, and FastAPI; the exact npm command to install Playwright; etc.
+
+Exit code is 0 when everything passes, 1 if any check failed. Safe to run repeatedly — the doctor is read-only and never modifies your config or files.
+
 ## Upgrading
 
 `traceon-cli` upgrades via npm:
