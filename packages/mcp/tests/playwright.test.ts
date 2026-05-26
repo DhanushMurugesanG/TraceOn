@@ -21,6 +21,8 @@ import {
   buildSummaryFromReport,
   loadAuthFile,
   extractLastErrorFromStderr,
+  extractTimeoutContext,
+  formatTimeoutFailureMessage,
 } from '../src/playwright.js';
 
 const tmpDirs: string[] = [];
@@ -268,5 +270,166 @@ describe('loadAuthFile', () => {
     );
 
     expect(loadAuthFile(root)).toEqual({});
+  });
+});
+
+// Regression for v0.0.7 feedback round-2: long compound tests that timed out
+// returned a generic "Test timeout of 180000ms exceeded" with no signal about
+// which step or where. v0.0.8 surfaces per-step context.
+describe('extractTimeoutContext', () => {
+  it('returns null for non-timeout results', () => {
+    expect(extractTimeoutContext({ status: 'passed', steps: [{ title: 'a' }] })).toBeNull();
+    expect(extractTimeoutContext({ status: 'failed', steps: [{ title: 'a' }] })).toBeNull();
+  });
+
+  it('returns null when there are no user-facing steps', () => {
+    expect(extractTimeoutContext({ status: 'timedOut', steps: [] })).toBeNull();
+    expect(extractTimeoutContext({
+      status: 'timedOut',
+      steps: [{ title: 'expect.toBeVisible' }],
+    })).toBeNull();
+  });
+
+  it('extracts the last user step with location, index, and error', () => {
+    const ctx = extractTimeoutContext({
+      status: 'timedOut',
+      steps: [
+        { title: 'Open the wizard', duration: 200 },
+        { title: 'Fill in fields', duration: 400 },
+        {
+          title: 'Click Save Draft',
+          duration: 166000,
+          location: { file: 'tests/save.spec.ts', line: 42, column: 7 },
+          error: { message: 'locator.fill: Target page, context or browser has been closed' },
+        },
+      ],
+    });
+    expect(ctx).not.toBeNull();
+    expect(ctx!.lastStepTitle).toBe('Click Save Draft');
+    expect(ctx!.lastStepIndex).toBe(3);
+    expect(ctx!.totalSteps).toBe(3);
+    expect(ctx!.location).toBe('tests/save.spec.ts:42:7');
+    expect(ctx!.lastStepError).toContain('Target page, context or browser has been closed');
+  });
+
+  it('flattens nested steps so test.step inside test.step is reachable', () => {
+    const ctx = extractTimeoutContext({
+      status: 'timedOut',
+      steps: [
+        { title: 'Outer step', steps: [{ title: 'Inner step', location: { file: 'a.ts', line: 5 } }] },
+      ],
+    });
+    expect(ctx!.lastStepTitle).toBe('Inner step');
+    expect(ctx!.location).toBe('a.ts:5');
+  });
+
+  it('captures attachments with paths (screenshots, traces, videos)', () => {
+    const ctx = extractTimeoutContext({
+      status: 'timedOut',
+      steps: [{ title: 'do thing' }],
+      attachments: [
+        { name: 'screenshot', path: '/tmp/test-failed-1.png', contentType: 'image/png' },
+        { name: 'trace', path: '/tmp/trace.zip', contentType: 'application/zip' },
+        { name: 'no-path-attachment' }, // dropped silently — no path
+      ],
+    });
+    expect(ctx!.attachments).toEqual([
+      { name: 'screenshot', path: '/tmp/test-failed-1.png' },
+      { name: 'trace', path: '/tmp/trace.zip' },
+    ]);
+  });
+
+  it('drops the optional location when no file is recorded', () => {
+    const ctx = extractTimeoutContext({
+      status: 'timedOut',
+      steps: [{ title: 'no location info' }],
+    });
+    expect(ctx!.location).toBeUndefined();
+  });
+});
+
+describe('formatTimeoutFailureMessage', () => {
+  it('leads with the failing step and includes the per-step error', () => {
+    const msg = formatTimeoutFailureMessage(
+      {
+        lastStepTitle: 'Click Save Draft',
+        lastStepIndex: 13,
+        totalSteps: 14,
+        location: 'tests/save.spec.ts:42:7',
+        lastStepError: 'locator.fill: Target page, context or browser has been closed',
+        attachments: [{ name: 'screenshot', path: '/tmp/x.png' }],
+      },
+      'Test timeout of 180000ms exceeded',
+    );
+    expect(msg).toMatch(/Timed out at step 13\/14: "Click Save Draft" \(tests\/save\.spec\.ts:42:7\)/);
+    expect(msg).toMatch(/Last action error: locator\.fill/);
+    expect(msg).toMatch(/Attachments: screenshot=\/tmp\/x\.png/);
+    expect(msg).toMatch(/Test timeout of 180000ms exceeded$/);
+  });
+
+  it('omits sections cleanly when there is no error or attachments', () => {
+    const msg = formatTimeoutFailureMessage(
+      {
+        lastStepTitle: 'idle wait',
+        lastStepIndex: 1,
+        totalSteps: 1,
+        attachments: [],
+      },
+      'Test timed out.',
+    );
+    expect(msg).toMatch(/Timed out at step 1\/1: "idle wait"\./);
+    expect(msg).not.toMatch(/Last action error:/);
+    expect(msg).not.toMatch(/Attachments:/);
+    expect(msg).toMatch(/Test timed out\.$/);
+  });
+});
+
+describe('buildSummaryFromReport timeout path', () => {
+  function baseArgs(overrides: Partial<Parameters<typeof buildSummaryFromReport>[0]> = {}) {
+    const evidenceDir = mkdtempSync(join(tmpdir(), 'traceon-pw-test-tmt-'));
+    tmpDirs.push(evidenceDir);
+    return {
+      test: '/abs/test.spec.ts',
+      reportPath: join(evidenceDir, 'playwright-report.json'),
+      exitCode: 1,
+      startTs: Date.now() - 180_000,
+      evidenceDir,
+      stdout: '',
+      stderr: '',
+      ...overrides,
+    };
+  }
+
+  it('produces an actionable failure_message on timeout, not the generic line', () => {
+    const args = baseArgs();
+    writeFileSync(args.reportPath, JSON.stringify({
+      suites: [{
+        specs: [{
+          title: 'autosave at 30s idle',
+          tests: [{
+            results: [{
+              status: 'timedOut',
+              steps: [
+                { title: 'Open editor' },
+                { title: 'Type 100 chars' },
+                {
+                  title: 'Wait 30s',
+                  location: { file: 'autosave.spec.ts', line: 81 },
+                  error: { message: 'Action timed out waiting for the idle event' },
+                },
+              ],
+              error: { message: 'Test timeout of 180000ms exceeded' },
+            }],
+          }],
+        }],
+      }],
+    }));
+
+    const summary = buildSummaryFromReport(args);
+    expect(summary.status).toBe('timedOut');
+    expect(summary.failure_message).toBeDefined();
+    expect(summary.failure_message!).toMatch(/Timed out at step 3\/3: "Wait 30s" \(autosave\.spec\.ts:81\)/);
+    expect(summary.failure_message!).toMatch(/Last action error: Action timed out waiting for the idle event/);
+    expect(summary.failure_message!).toMatch(/Test timeout of 180000ms exceeded$/);
   });
 });

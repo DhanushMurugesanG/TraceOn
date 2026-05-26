@@ -14,12 +14,100 @@ export interface RunPlaywrightOptions {
   extraEnv?: Record<string, string>;
 }
 
-interface PWStep { title?: string }
-interface PWResult { status?: string; steps?: PWStep[]; error?: { message?: string } }
+interface PWStepLocation { file?: string; line?: number; column?: number }
+interface PWStepError { message?: string }
+interface PWStep {
+  title?: string;
+  duration?: number;
+  location?: PWStepLocation;
+  error?: PWStepError;
+  steps?: PWStep[]; // nested steps (test.step inside test.step)
+}
+interface PWAttachment { name?: string; path?: string; contentType?: string }
+interface PWResult {
+  status?: string;
+  steps?: PWStep[];
+  error?: { message?: string };
+  attachments?: PWAttachment[];
+}
 interface PWReport {
   suites?: Array<{
     specs?: Array<{ title?: string; tests?: Array<{ results?: PWResult[] }> }>;
   }>;
+}
+
+/** Walk a step tree and return a flat list ordered by appearance.
+ *  Playwright nests steps when `test.step` is used inside another `test.step`. */
+function flattenSteps(steps: PWStep[] | undefined): PWStep[] {
+  if (!steps) return [];
+  const out: PWStep[] = [];
+  for (const s of steps) {
+    out.push(s);
+    if (s.steps?.length) out.push(...flattenSteps(s.steps));
+  }
+  return out;
+}
+
+/** Extract the context of a timed-out test: the step that was running when
+ *  the timeout fired, its source location, its own error message if any, and
+ *  any attachments (screenshots, traces, videos) the report happened to
+ *  contain. Returns null when the result wasn't a timeout or when there are
+ *  no steps to attribute the timeout to. */
+export function extractTimeoutContext(result: PWResult): {
+  lastStepTitle: string;
+  lastStepIndex: number;
+  totalSteps: number;
+  location?: string;
+  lastStepError?: string;
+  attachments: Array<{ name: string; path: string }>;
+} | null {
+  if (result.status !== 'timedOut') return null;
+  const flat = flattenSteps(result.steps);
+  // Heuristic: the step that was running when the timeout fired is the LAST
+  // one in the flattened list — Playwright records it in order, and the
+  // active-at-timeout step is the last entry (still emitted as a step even
+  // though it didn't complete normally).
+  const userSteps = flat.filter((s) => s.title && !s.title.startsWith('expect'));
+  if (userSteps.length === 0) return null;
+  const last = userSteps[userSteps.length - 1]!;
+  const loc = last.location;
+  const attachments = (result.attachments ?? [])
+    .filter((a) => a.path && a.name)
+    .map((a) => ({ name: a.name!, path: a.path! }));
+  const ctx: ReturnType<typeof extractTimeoutContext> = {
+    lastStepTitle: last.title!,
+    lastStepIndex: userSteps.indexOf(last) + 1,
+    totalSteps: userSteps.length,
+    attachments,
+  };
+  if (loc?.file) {
+    ctx.location = loc.line != null
+      ? `${loc.file}:${loc.line}${loc.column != null ? `:${loc.column}` : ''}`
+      : loc.file;
+  }
+  if (last.error?.message) ctx.lastStepError = last.error.message;
+  return ctx;
+}
+
+/** Format a timeout-aware failure message. The agent reads this; lead with
+ *  the actionable info (which step, where) rather than the generic timeout. */
+export function formatTimeoutFailureMessage(
+  ctx: NonNullable<ReturnType<typeof extractTimeoutContext>>,
+  fallbackMessage: string,
+): string {
+  const parts: string[] = [];
+  parts.push(
+    `Timed out at step ${ctx.lastStepIndex}/${ctx.totalSteps}: "${ctx.lastStepTitle}"` +
+    (ctx.location ? ` (${ctx.location})` : '') + '.',
+  );
+  if (ctx.lastStepError) parts.push(`Last action error: ${ctx.lastStepError}`);
+  if (ctx.attachments.length > 0) {
+    parts.push(
+      'Attachments: ' + ctx.attachments.map((a) => `${a.name}=${a.path}`).join(', '),
+    );
+  }
+  parts.push(fallbackMessage);
+  return parts.join(' ');
 }
 
 function classifyStatus(exitCode: number | null, raw?: string): TestSummary['status'] {
@@ -172,7 +260,20 @@ export function buildSummaryFromReport(args: {
     duration_ms: Date.now() - startTs,
     steps_executed: (result?.steps ?? []).map((s) => s.title ?? '').filter((t) => t.length > 0),
   };
-  if (result?.error?.message) summary.failure_message = result.error.message;
+
+  // For timed-out runs, surface per-step context (which step, where, what
+  // it was trying to do) instead of the generic "Test timeout of Nms
+  // exceeded". This is the difference between "useless" and "actionable"
+  // for compound test failures.
+  if (result && result.status === 'timedOut') {
+    const ctx = extractTimeoutContext(result);
+    const fallback = result.error?.message ?? 'Test timed out.';
+    summary.failure_message = ctx
+      ? formatTimeoutFailureMessage(ctx, fallback)
+      : fallback;
+  } else if (result?.error?.message) {
+    summary.failure_message = result.error.message;
+  }
   return summary;
 }
 

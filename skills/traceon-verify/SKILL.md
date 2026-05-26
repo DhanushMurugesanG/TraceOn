@@ -270,29 +270,51 @@ Use this framing:
 > 2. Investigate the failing service before continuing
 > 3. Something else
 
-### When the test timed out without errors
+### When the test timed out
 
-If `test_status === "timedOut"` AND `evidence_summary.error_spans === 0`:
+If `test_status === "timedOut"`:
 
-**Surface to the user, do not iterate.** Timeouts without error spans
-usually mean async behavior the test didn't account for. Common causes:
+**Read `test_summary.failure_message` FIRST.** As of v0.0.8 it leads with
+the specific step that was running when the timeout fired and the file
+location, e.g.:
 
-- A queue worker or background job didn't complete in time
-- A webhook didn't fire as expected
-- A polling consumer ran longer than the test timeout
-- The feature is genuinely async and the test was too strict on timing
+```
+Timed out at step 13/14: "Click Save Draft" (tests/save.spec.ts:42:7).
+Last action error: locator.fill: Target page, context or browser has
+been closed. Test timeout of 180000ms exceeded.
+```
 
-These cases require judgment about expected behavior. The agent can't
-know if "5 seconds" is the right wait time for a particular flow.
+That's almost always actionable — the step name + the per-step error
+together usually name the cause (a hanging fill, a missing selector,
+a never-resolving promise).
 
-Use this framing:
+**Then check the evidence:**
 
-> The test timed out, but I don't see any error spans in the evidence.
-> This usually means the feature involves async work the test didn't
-> wait for. The trace ran for [duration].
+- If `evidence_summary.error_spans > 0`: a backend operation also
+  errored during the run. Read Tier 1 for that error; the timeout and
+  the error are likely related (e.g. backend hung, frontend waited).
+- If `evidence_summary.error_spans === 0`: usually async behavior the
+  test didn't account for. Common causes:
+  - A queue worker or background job didn't complete in time
+  - A webhook didn't fire as expected
+  - A polling consumer ran longer than the test timeout
+  - The feature is genuinely async and the test was too strict on timing
+
+Use this framing when surfacing to the user:
+
+> The test timed out at step [N]: "[step title]" ([file:line]). The
+> last action was [paste the lastStepError or the step title].
 >
-> Was this expected to be synchronous, or should the test wait longer
-> for background work to complete?
+> [If error_spans > 0:] The backend also errored during this run with
+> [Tier 1 summary] — likely related.
+> [If error_spans === 0:] No backend error spans, so this looks like
+> async behavior the test didn't wait for.
+>
+> [Then ask the right question:]
+> Was [the failing action] expected to complete synchronously?
+
+Do not iterate blindly on a timeout. The step context tells you where;
+the user tells you whether the wait was wrong or the code was.
 
 ### When the trace was incomplete
 
