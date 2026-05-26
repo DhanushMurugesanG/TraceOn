@@ -22,3 +22,11 @@ Design notes, architecture writeups, and reference material for TraceOn.
 - [architecture-decisions.md](architecture-decisions.md)
 - [observability-stack-decisions.md](observability-stack-decisions.md)
 - [ranker-design-notes.md](ranker-design-notes.md)
+
+## Roadmap plans
+
+- [embedded-and-multi-backend-plan.md](embedded-and-multi-backend-plan.md) —
+  the four-phase plan to ship embedded mode (no SigNoz required) and
+  multi-backend support (Tempo, Jaeger, Datadog, Honeycomb). Targets the
+  recurring "setup friction is brutal" feedback. Includes the
+  "alternative triggers" matrix.
