@@ -79,6 +79,26 @@ Pass three things:
 - `intent`: the user's request in your own words, one sentence
 - `changed_files`: every file you modified (implementation AND test)
 
+If the test needs environment variables (e.g. an `AUTH_TOKEN` for a
+protected route, or a `BASE_URL` override), pass them via `extra_env`:
+
+```json
+{
+  "test": "/abs/path/to/test.spec.ts",
+  "intent": "verify the user can save as draft",
+  "changed_files": ["..."],
+  "extra_env": { "AUTH_TOKEN": "ey...", "BASE_URL": "http://localhost:3004" }
+}
+```
+
+`extra_env` keys are forwarded to the Playwright subprocess as real env
+vars — your test can read them via `process.env.AUTH_TOKEN`. **Do not
+read auth from `process.env` directly without also passing `extra_env`**:
+the test runs in a child process that doesn't inherit your shell env.
+
+For tokens you want to persist across runs without re-passing them every
+call, see the "Auth lifecycle" section under Special cases below.
+
 If this is a retry, also pass:
 
 - `iteration_index`: which attempt this is (1, 2, or 3)
@@ -554,6 +574,48 @@ The first time you hit auth on a new project, this is environment
 discovery — it's reasonable to spend a couple of iterations finding the
 right localStorage keys. Once it works, those keys are stable; future
 tests in the same project can copy the working seed block.
+
+#### Auth lifecycle: `.traceon/auth.json`
+
+JWTs expire. Iterating on a test ten minutes after grabbing a token
+means the eleventh iteration fails because the token rotated under you.
+To avoid asking the user for a fresh token every iteration:
+
+1. **Prompt for the token once** when the auth-protected pattern is
+   first detected.
+2. **Write it to `<projectRoot>/.traceon/auth.json`** as a flat JSON
+   object:
+
+   ```json
+   {
+     "AUTH_TOKEN": "ey...the_jwt..."
+   }
+   ```
+
+3. **Tell the user to gitignore `.traceon/`** if they haven't already.
+   Treat this like any other secret-holding dotfile.
+4. **Read the token in the test via `process.env.AUTH_TOKEN`** — TraceOn
+   auto-loads `.traceon/auth.json` and forwards every entry as an env
+   var to the Playwright subprocess.
+
+```typescript
+const AUTH_TOKEN = process.env.AUTH_TOKEN;
+if (!AUTH_TOKEN || AUTH_TOKEN.length < 20) {
+  throw new Error(
+    'AUTH_TOKEN not found. Add it to .traceon/auth.json or pass via extra_env.',
+  );
+}
+```
+
+When the token expires, the user updates `.traceon/auth.json` once and
+every subsequent iteration picks it up. The test source stops moving;
+only the secret file moves. That eliminates the inline-and-strip
+pattern entirely.
+
+Precedence: `extra_env` (passed at call time) overrides
+`.traceon/auth.json` (set once per project) overrides `process.env`
+(inherited from the MCP server's environment). Use `extra_env` for
+one-off overrides during a single verify call.
 
 ### When the test fires backend requests but `no_trace_activity` is still true
 

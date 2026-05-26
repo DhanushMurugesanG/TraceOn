@@ -19,6 +19,8 @@ import {
   resolvePlaywrightInvocation,
   detectKnownNoise,
   buildSummaryFromReport,
+  loadAuthFile,
+  extractLastErrorFromStderr,
 } from '../src/playwright.js';
 
 const tmpDirs: string[] = [];
@@ -165,5 +167,106 @@ describe('buildSummaryFromReport', () => {
     // The exact JSON.parse error text varies by Node version — just check it's surfaced.
     expect(summary.failure_message!).toMatch(/Failed to read Playwright report/);
     expect(summary.failure_message!).not.toMatch(/report file not written/);
+  });
+
+  // Regression for v0.0.6 feedback: webServer-timeout returned name:"unknown",
+  // steps_executed:[], failure_message:"" because the report file was never
+  // written and the generic fallback didn't surface the real error from
+  // stderr. After v0.0.7, the actual Playwright error line is bubbled up.
+  it('surfaces the webServer-timeout error from stderr when no report exists', () => {
+    const args = baseArgs({
+      exitCode: 1,
+      stderr:
+        '\n' +
+        'Error: Timed out waiting 120000ms from config.webServer.\n' +
+        '    at /path/to/playwright/lib/server.js:42:11\n',
+    });
+    // intentionally do NOT write reportPath
+
+    const summary = buildSummaryFromReport(args);
+    expect(summary.status).toBe('interrupted');
+    expect(summary.failure_message).toBeDefined();
+    expect(summary.failure_message!).toMatch(/Timed out waiting 120000ms from config\.webServer/);
+    expect(summary.failure_message!).toMatch(/exit=1/);
+    expect(summary.failure_message!).toMatch(/evidence_dir=/);
+    // Should NOT use the generic fallback when a specific error line was found
+    expect(summary.failure_message!).not.toMatch(/Failed to read Playwright report/);
+  });
+});
+
+describe('extractLastErrorFromStderr', () => {
+  it('extracts a webServer-timeout error line', () => {
+    const stderr = '\nError: Timed out waiting 120000ms from config.webServer.\n  at server.js:42\n';
+    expect(extractLastErrorFromStderr(stderr))
+      .toBe('Error: Timed out waiting 120000ms from config.webServer.');
+  });
+
+  it('extracts a generic Error: line when no specific pattern matches', () => {
+    const stderr = '\nError: cannot resolve config\n';
+    expect(extractLastErrorFromStderr(stderr)).toBe('Error: cannot resolve config');
+  });
+
+  it('strips ANSI color codes before matching', () => {
+    const stderr = '[31mError: Timed out waiting 5000ms from config.webServer[0m\n';
+    const result = extractLastErrorFromStderr(stderr);
+    expect(result).toBeDefined();
+    expect(result!).toMatch(/Timed out waiting 5000ms/);
+    expect(result!).not.toMatch(//);
+  });
+
+  it('returns undefined on clean stderr with no recognised error pattern', () => {
+    expect(extractLastErrorFromStderr('')).toBeUndefined();
+    expect(extractLastErrorFromStderr('some innocuous warning\n')).toBeUndefined();
+  });
+});
+
+describe('loadAuthFile', () => {
+  it('returns empty object when .traceon/auth.json is missing', () => {
+    const root = mkTmp();
+    expect(loadAuthFile(root)).toEqual({});
+  });
+
+  it('loads flat string-value pairs from .traceon/auth.json', () => {
+    const root = mkTmp();
+    mkdirSync(join(root, '.traceon'), { recursive: true });
+    writeFileSync(
+      join(root, '.traceon', 'auth.json'),
+      JSON.stringify({ AUTH_TOKEN: 'ey.jwt.value', API_BASE_URL: 'http://localhost:8080' }),
+    );
+
+    expect(loadAuthFile(root)).toEqual({
+      AUTH_TOKEN: 'ey.jwt.value',
+      API_BASE_URL: 'http://localhost:8080',
+    });
+  });
+
+  it('drops non-string values silently (best-effort, no throwing)', () => {
+    const root = mkTmp();
+    mkdirSync(join(root, '.traceon'), { recursive: true });
+    writeFileSync(
+      join(root, '.traceon', 'auth.json'),
+      JSON.stringify({ AUTH_TOKEN: 'good', RETRIES: 3, NESTED: { x: 1 } }),
+    );
+
+    expect(loadAuthFile(root)).toEqual({ AUTH_TOKEN: 'good' });
+  });
+
+  it('returns empty object on malformed JSON instead of throwing', () => {
+    const root = mkTmp();
+    mkdirSync(join(root, '.traceon'), { recursive: true });
+    writeFileSync(join(root, '.traceon', 'auth.json'), '{ not json');
+
+    expect(loadAuthFile(root)).toEqual({});
+  });
+
+  it('returns empty object when auth.json is an array (must be a flat object)', () => {
+    const root = mkTmp();
+    mkdirSync(join(root, '.traceon'), { recursive: true });
+    writeFileSync(
+      join(root, '.traceon', 'auth.json'),
+      JSON.stringify([{ AUTH_TOKEN: 'wrong shape' }]),
+    );
+
+    expect(loadAuthFile(root)).toEqual({});
   });
 });

@@ -9,6 +9,9 @@ export interface RunPlaywrightOptions {
   runId: string;
   evidenceDir: string;
   cwd?: string;
+  /** Extra env vars forwarded to the Playwright subprocess. Overrides any
+   *  matching key in `<projectRoot>/.traceon/auth.json`. */
+  extraEnv?: Record<string, string>;
 }
 
 interface PWStep { title?: string }
@@ -68,6 +71,55 @@ export function detectKnownNoise(stdout: string, stderr: string): string | null 
   return null;
 }
 
+// Load `<projectRoot>/.traceon/auth.json` if present. Flat `{ KEY: value }`
+// object — every entry becomes an env var forwarded to Playwright. The file
+// is meant to be gitignored (per-machine, holds secrets like JWTs). Silent
+// no-op on missing or malformed file; we don't want auth setup to be a
+// verification blocker.
+export function loadAuthFile(projectRoot: string): Record<string, string> {
+  const authPath = join(projectRoot, '.traceon', 'auth.json');
+  if (!existsSync(authPath)) return {};
+  try {
+    const raw = readFileSync(authPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'string') out[k] = v;
+      }
+      return out;
+    }
+  } catch { /* swallow — auth file is best-effort */ }
+  return {};
+}
+
+// Extract the most informative error line from Playwright's stderr for cases
+// where no JSON report was written at all (webServer-timeout, config error,
+// crash before tests start). Looks for the first line matching well-known
+// Playwright failure patterns and returns it.
+export function extractLastErrorFromStderr(stderr: string): string | undefined {
+  if (!stderr) return undefined;
+  // Strip ANSI color codes so the regexes work consistently
+  // eslint-disable-next-line no-control-regex
+  const clean = stderr.replace(/\[[0-9;]*m/g, '');
+  const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean);
+  // Preferred patterns, in priority order. Playwright is consistent enough
+  // that these cover the cases we've actually seen in the wild.
+  const patterns: RegExp[] = [
+    /^Error: Timed out .* from config\.webServer/i,
+    /^Error: .*webServer.*/i,
+    /^Error: .*config.*/i,
+    /^Error: /,
+    /^Timed out /i,
+    /^FATAL /,
+  ];
+  for (const pat of patterns) {
+    const hit = lines.find((l) => pat.test(l));
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 // Pure helper for the after-spawn branch. Split out so it can be unit-tested
 // without actually spawning a child process.
 export function buildSummaryFromReport(args: {
@@ -91,17 +143,23 @@ export function buildSummaryFromReport(args: {
     report = JSON.parse(raw) as PWReport;
   } catch (parseErr) {
     const reason = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    // If Playwright printed a recognisable error line to stderr (webServer
+    // timeout, config error, etc.), surface THAT as the primary cause —
+    // it's more useful than "Failed to read Playwright report." Fall back
+    // to the generic diagnostic block when no known pattern matches.
+    const surfaced = extractLastErrorFromStderr(stderr);
     return {
       file: test,
       name: 'unknown',
       status: 'interrupted',
       duration_ms: Date.now() - startTs,
       steps_executed: [],
-      failure_message:
-        `Failed to read Playwright report (${reason}). ` +
-        `exit=${exitCode}. evidence_dir=${evidenceDir}. ` +
-        (stdout ? `stdout_tail=${JSON.stringify(tail(stdout, 500))}. ` : '') +
-        (stderr ? `stderr_tail=${JSON.stringify(tail(stderr, 500))}` : ''),
+      failure_message: surfaced
+        ? `${surfaced} (exit=${exitCode}, evidence_dir=${evidenceDir})`
+        : `Failed to read Playwright report (${reason}). ` +
+          `exit=${exitCode}. evidence_dir=${evidenceDir}. ` +
+          (stdout ? `stdout_tail=${JSON.stringify(tail(stdout, 500))}. ` : '') +
+          (stderr ? `stderr_tail=${JSON.stringify(tail(stderr, 500))}` : ''),
     };
   }
 
@@ -130,8 +188,17 @@ export function runPlaywright(opts: RunPlaywrightOptions): Promise<TestSummary> 
     // debug log, and `JSON.parse(stdout)` chokes on the first byte of
     // noise. Reading a file is immune to that whole class of failure.
     const reportPath = join(opts.evidenceDir, 'playwright-report.json');
+
+    // Compose env vars forwarded to the Playwright subprocess. Priority:
+    //   process.env  <  .traceon/auth.json  <  opts.extraEnv  <  TraceOn internals
+    // .traceon/auth.json is the "set once" path (per-machine secrets like
+    // JWTs); extraEnv is the "this run" override that always wins on collision.
+    // TraceOn internals (trace id, evidence dir, report path) are non-negotiable.
+    const authFromFile = loadAuthFile(projectRoot);
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      ...authFromFile,
+      ...(opts.extraEnv ?? {}),
       TRACEON_TRACE_ID: opts.traceId,
       TRACEON_RUN_ID: opts.runId,
       TRACEON_EVIDENCE_DIR: opts.evidenceDir,

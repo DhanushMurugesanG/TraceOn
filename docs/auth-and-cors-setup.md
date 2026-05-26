@@ -108,18 +108,40 @@ match the specific app's expectations.
    one-time investigation is finding those keys; once you have them,
    future tests can copy this block verbatim.
 
-4. **Inline the token in the test file.** Don't read from `process.env`.
+4. **Pick how the token reaches the test.** Three options, in order of
+   preference:
 
-   The reason is mechanical, not philosophical: TraceOn's MCP wrapper
-   doesn't reliably forward env vars to Playwright's child process. The
-   skill's iteration loop also can't pass env vars between retries.
-   Inlining is the only path that survives every invocation route
-   (direct `playwright test`, TraceOn MCP, IDE Playwright extension).
+   **a. Recommended (v0.0.7+) — `.traceon/auth.json`.** Add the token
+   to a flat JSON file at `<projectRoot>/.traceon/auth.json`:
 
-   Treat the test file as sensitive while a real token is in it. Don't
-   commit it to a public repo. Once a project has stable test
-   infrastructure, replace the inline JWT with a token-fetch step that
-   talks to your auth provider's test-credentials endpoint.
+   ```json
+   { "AUTH_TOKEN": "ey...the_jwt..." }
+   ```
+
+   Then read it in the test via `process.env.AUTH_TOKEN`. TraceOn
+   loads the file once per run and forwards every entry as an env var
+   to the Playwright subprocess. When the token expires, update the
+   file once and every iteration picks it up — no editing the test.
+
+   **Gitignore `.traceon/`** — the directory holds both this secret
+   file and all per-run evidence dumps.
+
+   **b. `extra_env` for one-off runs (v0.0.7+).** When calling
+   `traceon_verify` you can pass:
+
+   ```json
+   { "extra_env": { "AUTH_TOKEN": "ey..." } }
+   ```
+
+   The agent will do this automatically when it has just been given a
+   token for the current call. `extra_env` overrides `auth.json` on
+   key collision.
+
+   **c. Inlined in the test file (legacy).** Still works but avoid it
+   on new projects: every token rotation means editing the test, and
+   a fat-finger commit leaks the JWT. Pre-v0.0.7 this was the only
+   path because env vars weren't reliably forwarded; v0.0.7+ closes
+   that gap.
 
 5. **Add a fail-fast guard.** When the token expires (every JWT does),
    you want the test to fail with `Auth token required — paste a fresh
@@ -136,7 +158,9 @@ will:
 - Recognize the pattern (selectors missing on a protected route, no
   CORS errors)
 - Stop and prompt you for a JWT
-- Inline the token and seed the common localStorage keys
+- On v0.0.7+, write it to `.traceon/auth.json` so the next iteration
+  picks it up automatically; on older versions, inline it in the test
+- Seed the common localStorage keys
 - Add the fail-fast guard
 
 If your app needs unusual keys, tell Claude where the auth helper lives

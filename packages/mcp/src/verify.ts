@@ -19,7 +19,7 @@ import { loadConfig } from './config.js';
 export const verifyToolDefinition = {
   name: 'traceon_verify',
   description:
-    'Run a Playwright test for a feature change and return ranked runtime evidence. Use this to verify the feature actually works end-to-end after editing code. Pass the test you wrote, the user\'s intent, and the files you changed.',
+    'Run a Playwright test for a feature change and return ranked runtime evidence. Use this to verify the feature actually works end-to-end after editing code. Pass the test you wrote, the user\'s intent, and the files you changed. Pass `extra_env` to forward env vars (e.g. AUTH_TOKEN) to the Playwright subprocess; use `signoz_env` to pick a SigNoz config profile.',
   inputSchema: {
     type: 'object',
     required: ['test'],
@@ -27,7 +27,12 @@ export const verifyToolDefinition = {
       test: { type: 'string' },
       intent: { type: 'string' },
       changed_files: { type: 'array', items: { type: 'string' } },
-      env: { type: 'string' },
+      signoz_env: { type: 'string' },
+      extra_env: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        description: 'Extra environment variables forwarded to the Playwright subprocess (e.g. AUTH_TOKEN, API_BASE_URL).',
+      },
       prior_run_id: { type: 'string' },
       iteration_index: { type: 'integer' },
     },
@@ -38,14 +43,15 @@ const VerifyArgs = z.object({
   test: z.string(),
   intent: z.string().optional(),
   changed_files: z.array(z.string()).default([]),
-  env: z.string().default('default'),
+  signoz_env: z.string().default('default'),
+  extra_env: z.record(z.string(), z.string()).default({}),
   prior_run_id: z.string().optional(),
   iteration_index: z.number().int().optional(),
 });
 
 export async function handleVerify(args: unknown): Promise<VerificationResult> {
   const parsed = VerifyArgs.parse(args);
-  const config = loadConfig(parsed.env);
+  const config = loadConfig(parsed.signoz_env);
 
   const resolvedTest = resolve(parsed.test);
   if (!existsSync(resolvedTest)) {
@@ -76,6 +82,7 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
     traceId,
     runId,
     evidenceDir,
+    extraEnv: parsed.extra_env,
   });
   const testEndMs = Date.now();
 
