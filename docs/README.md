@@ -20,6 +20,10 @@ Design notes, architecture writeups, and reference material for TraceOn.
   v0.0.10. Four new failure modes (dev-server staleness, Tier 2 noise,
   coverage warning false positives, state-drift). Includes the v0.0.11
   fix bundle proposal.
+- [next-block-3-second-alpha-user.md](next-block-3-second-alpha-user.md) —
+  the hard commitment after v0.0.11: no more dogfood-driven iteration
+  until a second developer has run TraceOn against a non-Trainery
+  codebase and surfaced feedback.
 
 ## Design / architecture
 
