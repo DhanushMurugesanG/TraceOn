@@ -1,6 +1,6 @@
 ---
 name: traceon-verify
-version: 0.0.9
+version: 0.0.11
 description: Use this skill when implementing or fixing user-facing features in projects that have TraceOn configured. Trigger words include "add", "implement", "build", "create", "fix bug in", or any feature work where behavior changes are observable in a running application. Use it especially when the change crosses frontend and backend, where visual confirmation isn't enough.
 ---
 
@@ -181,6 +181,15 @@ below to the items in Tier 1.
 If `test_status === "passed"` AND `coverage.warnings.length > 0`,
 **check `coverage.attribution_limited` first**.
 
+> Note (v0.0.11+): frontend files (`.tsx`, `.jsx`, `.vue`, `.svelte`,
+> and `.ts`/`.js` under typical frontend `src/` paths) no longer appear
+> in `coverage.misses` or `coverage.warnings` at all — they're listed
+> in `coverage.info` instead as benign signals. If you see a single
+> `coverage.info` line saying "N frontend files in changed_files —
+> no backend spans expected", that's the tool telling you "I know about
+> these and they're fine, no need to reason about them." Don't treat
+> `info` as a concern.
+
 #### Case A: `coverage.attribution_limited === true`
 
 The warning is almost certainly the **OpenTelemetry file-attribution
@@ -270,6 +279,50 @@ Use this framing:
 > 1. Treat as environmental and assume my change is fine
 > 2. Investigate the failing service before continuing
 > 3. Something else
+
+### When a testid you just added doesn't appear (bundle staleness)
+
+If `test_status === "failed"` AND the Tier 1 failure is a selector not
+found — specifically a `data-testid` you ADDED in the implementation
+in this same change — there's a third possibility beyond "test wrong"
+and "code wrong": **your dev server is one rebuild behind your editor.**
+
+Vite / Webpack / module-federation builds have an HMR settling window
+where the bundle served at the test URL is the pre-edit version even
+though the new code is on disk and typechecked. The browser sees the
+old DOM; your test sees the new DOM in source; both are right.
+
+**Cheap first response:** if `iteration_index < 3`, do **one blind
+retry** of `traceon_verify` without changing the code. Retries are
+fast (often ~4 s) and an HMR-settled rerun will pass without any
+intervention. This is the lowest-cost diagnostic you have for this
+case.
+
+If the retry also fails on the same selector, THEN suspect the code.
+Check the source for the testid (you have Read access to the test and
+the implementation file) before iterating on the implementation:
+
+```typescript
+// Quick first-line assertion before the wizard navigates:
+const src = await fs.readFile('src/.../VisibilityRow.tsx', 'utf-8');
+if (!src.includes('vis-internal-row-employee')) {
+  throw new Error('Implementation file does not contain the testid. The change may have been reverted or never landed.');
+}
+```
+
+This catches **state-drift between sessions** — file rolled back, edit
+lost in an aborted save, branch switched — in milliseconds instead of
+routing through Playwright navigation + selector timeout (5-20 s of
+wasted wallclock).
+
+Use this framing when surfacing to the user after a retry + source
+check both fail:
+
+> The test expected `data-testid="X"` but the served bundle didn't have
+> it. I retried (HMR settling) and also read the source file — the
+> testid isn't there either. Either the implementation file was reverted
+> between sessions, or I never actually added it. Should I re-add the
+> code change?
 
 ### When the test timed out
 
@@ -576,38 +629,26 @@ When you suspect auth is needed:
      match what the app actually reads. Grep the app's auth context or
      token-storage helper to find the keys.
 
-3. **Inline the token directly in the test** rather than reading from
-   `process.env`. TraceOn's runner and the skill's iteration loop do not
-   reliably forward env vars to Playwright's process; an inlined token
-   always works and is the accepted pattern for local-dev verification.
+3. **Pick how the token reaches the test.** Three paths, in order of
+   preference for the common case (you're iterating on one feature):
 
-4. **Always add a fail-fast guard** at the top of the test:
+   **a. `extra_env` at the verify call (RECOMMENDED for one-off auth).**
+   Pass the token as a parameter on the `traceon_verify` MCP tool call:
 
-   ```typescript
-   const AUTH_TOKEN = '<jwt-here>';
-   if (!AUTH_TOKEN || AUTH_TOKEN.length < 20) {
-     throw new Error('Auth token required — paste a fresh JWT into the test.');
+   ```json
+   {
+     "test": "/abs/path/to/test.spec.ts",
+     "extra_env": { "AUTH_TOKEN": "ey...the_jwt..." }
    }
    ```
 
-   That way, when the token expires later, the test fails with a clear
-   message instead of "selector not visible after 20s."
+   Read it in the test via `process.env.AUTH_TOKEN`. No files to create,
+   no test-source edits. The simplest path for the first run on a new
+   feature.
 
-The first time you hit auth on a new project, this is environment
-discovery — it's reasonable to spend a couple of iterations finding the
-right localStorage keys. Once it works, those keys are stable; future
-tests in the same project can copy the working seed block.
-
-#### Auth lifecycle: `.traceon/auth.json`
-
-JWTs expire. Iterating on a test ten minutes after grabbing a token
-means the eleventh iteration fails because the token rotated under you.
-To avoid asking the user for a fresh token every iteration:
-
-1. **Prompt for the token once** when the auth-protected pattern is
-   first detected.
-2. **Write it to `<projectRoot>/.traceon/auth.json`** as a flat JSON
-   object:
+   **b. `.traceon/auth.json` (when iterating across many sessions).**
+   When you find yourself re-passing the same token to many `traceon_verify`
+   calls in a row, graduate to a per-project secret file:
 
    ```json
    {
@@ -615,30 +656,47 @@ To avoid asking the user for a fresh token every iteration:
    }
    ```
 
-3. **Tell the user to gitignore `.traceon/`** if they haven't already.
-   Treat this like any other secret-holding dotfile.
-4. **Read the token in the test via `process.env.AUTH_TOKEN`** — TraceOn
-   auto-loads `.traceon/auth.json` and forwards every entry as an env
-   var to the Playwright subprocess.
+   at `<projectRoot>/.traceon/auth.json`. TraceOn auto-loads it and
+   forwards every entry as an env var. **Tell the user to gitignore
+   `.traceon/`** if they haven't already — both this secret file and
+   per-run evidence dumps live there.
 
-```typescript
-const AUTH_TOKEN = process.env.AUTH_TOKEN;
-if (!AUTH_TOKEN || AUTH_TOKEN.length < 20) {
-  throw new Error(
-    'AUTH_TOKEN not found. Add it to .traceon/auth.json or pass via extra_env.',
-  );
-}
-```
+   When the token expires later, the user updates the file once; every
+   subsequent iteration picks it up automatically. Test source stops
+   moving.
 
-When the token expires, the user updates `.traceon/auth.json` once and
-every subsequent iteration picks it up. The test source stops moving;
-only the secret file moves. That eliminates the inline-and-strip
-pattern entirely.
+   **c. Inlined in the test source (legacy).** Edit the JWT directly
+   into the test file. Works pre-v0.0.7 when env-forwarding didn't, but
+   v0.0.7+ supports both `extra_env` and `.traceon/auth.json` cleanly.
+   Avoid on new projects — every token rotation means editing the test,
+   and a fat-finger commit leaks the JWT.
 
-Precedence: `extra_env` (passed at call time) overrides
-`.traceon/auth.json` (set once per project) overrides `process.env`
-(inherited from the MCP server's environment). Use `extra_env` for
-one-off overrides during a single verify call.
+4. **Always add a fail-fast guard** at the top of the test (regardless
+   of which path above you picked):
+
+   ```typescript
+   const AUTH_TOKEN = process.env.AUTH_TOKEN;
+   if (!AUTH_TOKEN || AUTH_TOKEN.length < 20) {
+     throw new Error(
+       'AUTH_TOKEN not found. Pass via extra_env or add to .traceon/auth.json.',
+     );
+   }
+   ```
+
+   When the token expires, the test fails with a clear message instead
+   of "selector not visible after 20s."
+
+The first time you hit auth on a new project, this is environment
+discovery — it's reasonable to spend a couple of iterations finding the
+right localStorage keys. Once it works, those keys are stable; future
+tests in the same project can copy the working seed block.
+
+#### Precedence (v0.0.7+)
+
+`extra_env` (call-time) overrides `.traceon/auth.json` (project-scoped)
+overrides `process.env` (server inherited). Use `extra_env` for one-off
+overrides during a single verify call; auth.json for the values you
+want persisted across calls.
 
 ### When the test fires backend requests but `no_trace_activity` is still true
 
@@ -695,6 +753,12 @@ When you read `ranked_packet`, three tiers exist:
   parent/child spans of Tier 1 items. Useful for understanding why
   something went wrong, but not always present (often empty on
   happy paths).
+
+  As of v0.0.11, identical browser console events are grouped: if 17
+  CORS rejections fired the same message, you see ONE Tier 2 entry
+  with `count: 17` and a summary annotated `(×17)`. Treat that as one
+  signal with high frequency, not 17 separate signals. The full
+  occurrence list is at the evidence path if you need it.
 
 - **Tier 3** is summarized only: counts and themes of routine evidence.
   You see a summary string, not individual items. Don't try to reason

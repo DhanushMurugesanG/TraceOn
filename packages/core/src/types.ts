@@ -70,7 +70,7 @@ export interface TestSummary {
 export interface CoverageInfo {
   hits: string[];          // file paths that had spans
   misses: string[];        // changed files with zero spans
-  warnings: string[];      // human-readable concerns
+  warnings: string[];      // human-readable concerns the agent SHOULD reason about
   /**
    * True when the trace contains execution evidence (spans) but file-level
    * attribution didn't fire for one or more backend files in `misses`. This
@@ -78,6 +78,13 @@ export interface CoverageInfo {
    * didn't run — agents should treat misses as low-confidence when set.
    */
   attribution_limited: boolean;
+  /**
+   * Benign signals the agent should be aware of but does NOT need to surface
+   * as concerns. Frontend files in `changed_files` go here (they wouldn't
+   * produce backend spans anyway), so the agent doesn't waste reasoning on
+   * "is this a coverage gap?" — it's not.
+   */
+  info?: string[];
 }
 
 export interface RawEvidence {
@@ -104,7 +111,15 @@ export interface EvidenceRef {
   id: string;
   service?: string;
   summary: string;         // one-line human-readable
-  data: unknown;           // the verbatim evidence item
+  data: unknown;           // the verbatim evidence item (first occurrence when count > 1)
+  /**
+   * When > 1, this ref represents an aggregation of `count` identical
+   * evidence items collapsed into one. The agent should treat the ref
+   * as a single signal with an occurrence count, NOT N separate signals.
+   * Currently only set for browser console events grouped by identical
+   * normalized text. `data` holds the first occurrence's payload.
+   */
+  count?: number;
 }
 
 export interface RankedPacket {

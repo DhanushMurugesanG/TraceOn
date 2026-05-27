@@ -2,7 +2,7 @@ import type { CheckFn } from '../types.js';
 import { fetchWithTimeout } from './_http.js';
 
 /**
- * Check 5 — Backend CORS allows the `traceparent` header.
+ * Check 5 — Every detected backend allows the `traceparent` header.
  *
  * The single most valuable check in the doctor. Reproduces the browser's
  * preflight in miniature: OPTIONS with Access-Control-Request-Headers:
@@ -11,12 +11,13 @@ import { fetchWithTimeout } from './_http.js';
  * fixture tries to inject the trace header into — the test will fail in
  * confusing ways without TraceOn ever seeing a backend span.
  *
- * Skips when the backend wasn't detected or didn't respond in the
- * previous check.
+ * v0.0.11 expansion: probes EVERY backend in ctx.backendUrls, not just
+ * the first. Multi-backend apps (Trainery Core API + Review-cloud) need
+ * each backend's CORS verified independently.
  */
 
 const CORS_FIX = [
-  'Add `traceparent` to your backend\'s Access-Control-Allow-Headers.',
+  'Add `traceparent` to each backend\'s Access-Control-Allow-Headers.',
   'Snippets:',
   '  gofiber:  AllowHeaders: "Origin, Content-Type, Authorization, traceparent, tracestate"',
   '  rs/cors:  AllowedHeaders: []string{"Authorization", "Content-Type", "traceparent", "tracestate"}',
@@ -27,7 +28,6 @@ const CORS_FIX = [
 
 export function allowsTraceparent(allowHeaders: string | null | undefined): boolean {
   if (!allowHeaders) return false;
-  // Wildcard allow-headers — accepts all custom headers
   if (allowHeaders.trim() === '*') return true;
   return allowHeaders
     .toLowerCase()
@@ -36,17 +36,15 @@ export function allowsTraceparent(allowHeaders: string | null | undefined): bool
     .includes('traceparent');
 }
 
-export const corsTraceparent: CheckFn = async (ctx) => {
-  if (!ctx.backendUrl) {
-    return {
-      name: 'CORS allows traceparent',
-      status: 'skip',
-      message: 'Backend was not detected — can\'t probe CORS',
-    };
-  }
+interface BackendResult {
+  url: string;
+  status: 'pass' | 'fail' | 'skip';
+  allowHeaders?: string | null;
+  error?: string;
+}
 
-  const origin = ctx.playwrightBaseUrl ?? 'http://localhost:5173';
-  const res = await fetchWithTimeout(ctx.backendUrl, {
+async function probeOne(url: string, origin: string): Promise<BackendResult> {
+  const res = await fetchWithTimeout(url, {
     method: 'OPTIONS',
     headers: {
       Origin: origin,
@@ -55,34 +53,64 @@ export const corsTraceparent: CheckFn = async (ctx) => {
     },
     timeoutMs: 3000,
   });
+  if (!res.ok) return { url, status: 'skip', error: res.error };
+  const allow = res.headers.get('access-control-allow-headers');
+  return { url, status: allowsTraceparent(allow) ? 'pass' : 'fail', allowHeaders: allow };
+}
 
-  if (!res.ok) {
+export const corsTraceparent: CheckFn = async (ctx) => {
+  const urls = ctx.backendUrls ?? (ctx.backendUrl ? [ctx.backendUrl] : []);
+  if (urls.length === 0) {
     return {
       name: 'CORS allows traceparent',
       status: 'skip',
-      message: `Backend at ${ctx.backendUrl} did not respond to OPTIONS preflight`,
-      detail: res.error,
+      message: 'No backends detected — can\'t probe CORS',
     };
   }
 
-  const allowHeaders = res.headers.get('access-control-allow-headers');
-  if (allowsTraceparent(allowHeaders)) {
+  const origin = ctx.playwrightBaseUrl ?? 'http://localhost:5173';
+  const results = await Promise.all(urls.map((u) => probeOne(u, origin)));
+
+  const passed = results.filter((r) => r.status === 'pass');
+  const failed = results.filter((r) => r.status === 'fail');
+  const skipped = results.filter((r) => r.status === 'skip');
+
+  if (failed.length === 0 && passed.length > 0) {
+    return {
+      name: `CORS allows traceparent (${passed.length} backend${passed.length === 1 ? '' : 's'})`,
+      status: 'pass',
+      message: passed.length === 1
+        ? `${passed[0]!.url} allows traceparent in preflight`
+        : passed.map((r) => `  ${r.url}: ✓ allowed`).join('\n'),
+    };
+  }
+
+  if (failed.length === 0) {
+    // All skipped (no response). Already reported by the backend-reachable
+    // check; don't double-warn here.
     return {
       name: 'CORS allows traceparent',
-      status: 'pass',
-      message: `${ctx.backendUrl} allows traceparent in preflight`,
+      status: 'skip',
+      message: 'No backends responded to OPTIONS preflight',
+      detail: skipped.map((r) => `  ${r.url}: ${r.error ?? 'no response'}`).join('\n'),
     };
   }
 
+  // At least one failure — name each backend's status so the user knows
+  // exactly which to fix.
+  const perBackend = results.map((r) => {
+    if (r.status === 'pass') return `  ✓ ${r.url}: traceparent allowed`;
+    if (r.status === 'fail') return `  ✗ ${r.url}: traceparent missing\n    ACAH: ${r.allowHeaders ?? '(missing)'}`;
+    return `  - ${r.url}: did not respond (${r.error ?? 'unknown'})`;
+  }).join('\n');
+
   return {
-    name: 'CORS allows traceparent',
+    name: `CORS allows traceparent (${passed.length} of ${passed.length + failed.length} pass)`,
     status: 'fail',
-    message: 'traceparent is not in Access-Control-Allow-Headers',
-    detail:
-      `Probed ${ctx.backendUrl} with Origin: ${origin}.\n` +
-      `Response Access-Control-Allow-Headers: ${allowHeaders ?? '(missing)'}.\n` +
-      'Your backend will block the trace header TraceOn injects, so verification ' +
-      'will run without backend spans.',
+    message: `${failed.length} backend${failed.length === 1 ? '' : 's'} reject traceparent`,
+    detail: `Probed with Origin: ${origin}.\n${perBackend}\n` +
+      'Browser will block requests with the trace header injected against any failing backend, ' +
+      'so verification will run without backend spans for those routes.',
     fix: CORS_FIX,
   };
 };

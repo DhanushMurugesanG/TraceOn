@@ -1,4 +1,4 @@
-import type { RawEvidence, EvidenceRef, Span } from '../types.js';
+import type { RawEvidence, EvidenceRef, Span, BrowserEvent } from '../types.js';
 
 export interface Tier2Candidate {
   ref: EvidenceRef;
@@ -101,7 +101,61 @@ export function collectTier2(evidence: RawEvidence, tier1Ids: Set<string>): Tier
     }
   }
 
-  return out;
+  return aggregateConsoleEvents(out);
+}
+
+/**
+ * Browser console events frequently repeat identically — e.g. 17 verbatim
+ * CORS errors as the page retries the same fetch. Each one was being
+ * surfaced as a separate Tier 2 entry, which the agent skims past after
+ * recognising the pattern. Worse, they eat budget that would otherwise
+ * carry a more useful signal.
+ *
+ * Group console events by (level, normalized text). When the same text
+ * appears more than once, collapse into a single ref with `count` set and
+ * the summary annotated. Spans and logs are untouched.
+ *
+ * Normalization: just trim. We don't strip URLs / IDs / timestamps because
+ * if those differ between occurrences, the messages are conceptually
+ * different and should NOT collapse. The case round-3 feedback called out
+ * was byte-identical messages, which trim-only handles correctly.
+ */
+export function aggregateConsoleEvents(candidates: Tier2Candidate[]): Tier2Candidate[] {
+  const groups = new Map<string, Tier2Candidate[]>();
+  const passthrough: Tier2Candidate[] = [];
+
+  for (const c of candidates) {
+    if (c.ref.kind !== 'browser_event') { passthrough.push(c); continue; }
+    const ev = c.ref.data as BrowserEvent;
+    if (ev.kind !== 'console') { passthrough.push(c); continue; }
+    const key = `${ev.level}|${(ev.text ?? '').trim()}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(c);
+    groups.set(key, arr);
+  }
+
+  const aggregated: Tier2Candidate[] = [];
+  for (const arr of groups.values()) {
+    if (arr.length === 1) {
+      aggregated.push(arr[0]!);
+      continue;
+    }
+    const first = arr[0]!;
+    const ev = first.ref.data as BrowserEvent;
+    const text = (ev.text ?? '').slice(0, 120);
+    aggregated.push({
+      ...first,
+      ref: {
+        ...first.ref,
+        // Make the ID stable but distinguishable from the singleton case
+        id: `${first.ref.id}+${arr.length - 1}more`,
+        count: arr.length,
+        summary: `Console ${ev.level} (×${arr.length}): ${text}`,
+      },
+    });
+  }
+
+  return [...passthrough, ...aggregated];
 }
 
 export function sortTier2(items: Tier2Candidate[]): Tier2Candidate[] {

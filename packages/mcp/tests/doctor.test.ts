@@ -25,6 +25,7 @@ import {
   allowsTraceparent,
   corsTraceparent,
 } from '../src/doctor/checks/cors-traceparent.js';
+import { detectAllBackendUrls } from '../src/doctor/checks/backend-reachable.js';
 import { renderResult, renderSummary, renderAll } from '../src/doctor/renderer.js';
 import type { CheckResult, DoctorContext } from '../src/doctor/types.js';
 
@@ -201,7 +202,9 @@ describe('corsTraceparent — preflight probe', () => {
     expect(r.fix!).toMatch(/gofiber/);
     expect(r.fix!).toMatch(/rs\/cors/);
     expect(r.fix!).toMatch(/FastAPI/);
-    expect(r.detail!).toMatch(/Access-Control-Allow-Headers/);
+    // v0.0.11 multi-backend format: per-backend lines with "ACAH:" prefix.
+    expect(r.detail!).toMatch(/ACAH:/);
+    expect(r.detail!).toMatch(/Content-Type, Authorization/);
   });
 });
 
@@ -257,5 +260,111 @@ describe('renderer', () => {
     const summaryIdx = out.indexOf('1 passed');
     expect(passIdx).toBeLessThan(failIdx);
     expect(failIdx).toBeLessThan(summaryIdx);
+  });
+});
+
+// v0.0.11 — multi-backend doctor probe. Real apps (Trainery Core API at
+// :8000 + Review-cloud at :8001) need every backend's CORS verified
+// independently or the doctor gives false confidence.
+describe('detectAllBackendUrls — finds every distinct backend (v0.0.11)', () => {
+  it('returns every target in vite.config proxy, not just the first', () => {
+    const root = mkProject();
+    writeFileSync(join(root, 'vite.config.ts'), `
+      export default defineConfig({
+        server: {
+          proxy: {
+            '/api/core': { target: 'http://localhost:8000', changeOrigin: true },
+            '/api/reviews': { target: 'http://localhost:8001', changeOrigin: true },
+            '/api/auth': { target: 'http://localhost:9000', changeOrigin: true },
+          },
+        },
+      });
+    `);
+    const urls = detectAllBackendUrls(root);
+    expect(urls).toEqual([
+      'http://localhost:8000',
+      'http://localhost:8001',
+      'http://localhost:9000',
+    ]);
+  });
+
+  it('dedupes by origin + first path segment so /api and /api/health collapse', () => {
+    const root = mkProject();
+    writeFileSync(join(root, 'vite.config.ts'), `
+      proxy: {
+        target: 'http://localhost:8000/api',
+        target: 'http://localhost:8000/api/health',
+        target: 'http://localhost:9000/api',
+      }
+    `);
+    const urls = detectAllBackendUrls(root);
+    // Two distinct logical backends — :8000/api and :9000/api
+    expect(urls.length).toBe(2);
+    expect(urls.some((u) => u.startsWith('http://localhost:8000'))).toBe(true);
+    expect(urls.some((u) => u.startsWith('http://localhost:9000'))).toBe(true);
+  });
+
+  it('combines vite proxy + .env *_API_URL into one list', () => {
+    const root = mkProject();
+    writeFileSync(join(root, 'vite.config.ts'),
+      `proxy: { target: 'http://localhost:8000' }`,
+    );
+    writeFileSync(join(root, '.env'),
+      'VITE_REVIEW_CLOUD_API_URL=http://localhost:8001\n' +
+      'VITE_CORE_API_URL=http://localhost:8000\n' +  // duplicate, collapses
+      'API_URL=http://localhost:9000\n',
+    );
+    const urls = detectAllBackendUrls(root);
+    expect(urls.length).toBe(3); // 8000 (already there), 8001, 9000
+    expect(urls).toContain('http://localhost:8001');
+    expect(urls).toContain('http://localhost:9000');
+  });
+
+  it('returns [] when no config found anywhere', () => {
+    const root = mkProject();
+    expect(detectAllBackendUrls(root)).toEqual([]);
+  });
+});
+
+describe('corsTraceparent — multi-backend (v0.0.11)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  it('passes when ALL backends in backendUrls allow traceparent', async () => {
+    const headers = new Headers();
+    headers.set('access-control-allow-headers', 'traceparent, Authorization');
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 204, headers,
+    } as unknown as Response);
+
+    const ctx = {
+      cwd: '/x', projectRoot: '/x',
+      backendUrls: ['http://localhost:8000', 'http://localhost:8001'],
+    } as DoctorContext;
+    const r = await corsTraceparent(ctx);
+    expect(r.status).toBe('pass');
+    expect(r.name).toMatch(/2 backends/);
+  });
+
+  it('fails when ANY backend rejects traceparent, names each one', async () => {
+    let call = 0;
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      const headers = new Headers();
+      // First backend allows, second doesn't
+      headers.set('access-control-allow-headers',
+        call++ === 0 ? 'traceparent, Authorization' : 'Authorization');
+      return Promise.resolve({ status: 204, headers } as unknown as Response);
+    });
+
+    const ctx = {
+      cwd: '/x', projectRoot: '/x',
+      backendUrls: ['http://localhost:8001', 'http://localhost:8000'],
+    } as DoctorContext;
+    const r = await corsTraceparent(ctx);
+    expect(r.status).toBe('fail');
+    expect(r.detail!).toMatch(/http:\/\/localhost:8000/); // the failing one is named
+    expect(r.detail!).toMatch(/http:\/\/localhost:8001/); // the passing one is also shown for context
+    expect(r.fix!).toMatch(/gofiber/);
   });
 });

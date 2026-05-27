@@ -35,8 +35,14 @@ export interface DoctorContext {
   playwrightBaseUrl?: string;
   /** webServer.url extracted from playwright.config.ts, if any. */
   playwrightWebServerUrl?: string;
-  /** Backend URL inferred from vite proxy / .env / defaults, if any. */
+  /** First backend URL inferred from vite proxy / .env / defaults, if any.
+   *  Kept for compatibility; new code should prefer backendUrls. */
   backendUrl?: string;
+  /** All distinct backend URLs detected (vite proxy entries, .env vars,
+   *  common defaults). Empty if none detected. The CORS check iterates
+   *  over the full list, so multi-backend apps don't silently miss the
+   *  second backend's CORS gap. */
+  backendUrls?: string[];
   /** SigNoz URL inferred from the user's MCP server config, if any. */
   signozBaseUrl?: string;
 }
