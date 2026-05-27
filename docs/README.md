@@ -16,6 +16,10 @@ Design notes, architecture writeups, and reference material for TraceOn.
   post-v0.0.7 feedback: bimodal ROI take, env-forwarding "bit me
   again" (skill staleness diagnosis), and the next ship plan (timeout
   failure surfacing).
+- [feedback-2026-05-27.md](feedback-2026-05-27.md) — round-3, post-
+  v0.0.10. Four new failure modes (dev-server staleness, Tier 2 noise,
+  coverage warning false positives, state-drift). Includes the v0.0.11
+  fix bundle proposal.
 
 ## Design / architecture
 
