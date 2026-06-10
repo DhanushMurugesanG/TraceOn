@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
-import { SigNozClient } from './connectors/signoz.js';
+import type { EvidenceBackend } from './backends/interface.js';
 import { redactObject, type RedactionRecord } from './redact.js';
 import { computeCoverage } from './coverage.js';
-import { TraceOnError } from './errors.js';
 import type { RawEvidence, BrowserEvent, TestSummary, Span, LogRecord } from './types.js';
 
 export interface GatherOptions {
@@ -12,7 +11,7 @@ export interface GatherOptions {
   testSummary: TestSummary;
   changedFiles: string[];
   intent?: string;
-  signozClient: SigNozClient;
+  backend: EvidenceBackend;
   testStartMs: number;
   testEndMs: number;
 }
@@ -49,9 +48,9 @@ function readBrowserEvents(path: string): BrowserEvent[] {
 }
 
 export async function gatherEvidence(opts: GatherOptions): Promise<GatherResult> {
-  // Read browser events first so we can decide whether to wait on SigNoz at all.
-  // If the test never fired a fetch, no backend trace will arrive — skip the
-  // 60s wait + the trace/log fetches entirely.
+  // Read browser events first so we can decide whether to wait on the backend
+  // at all. If the test never fired a fetch, no trace will arrive — skip the
+  // settle wait + the trace/log fetches entirely.
   const rawBrowserEvents = readBrowserEvents(`${opts.evidenceDir}/browser_events.jsonl`);
   const hasNetworkActivity = rawBrowserEvents.some((e) => e.kind === 'network');
 
@@ -60,18 +59,14 @@ export async function gatherEvidence(opts: GatherOptions): Promise<GatherResult>
   let complete = true;
 
   if (hasNetworkActivity) {
-    const health = await opts.signozClient.health();
+    const health = await opts.backend.health();
     if (!health.ok) {
-      throw new TraceOnError(
-        'TRACE_BACKEND_UNREACHABLE',
-        `SigNoz at ${opts.signozClient.config.baseUrl} is not responding`,
-        `Start SigNoz with \`docker compose up -d\` and verify at ${opts.signozClient.config.baseUrl}. If the URL is wrong, set SIGNOZ_BASE_URL in the MCP server env.`,
-      );
+      throw opts.backend.unreachableError();
     }
-    const wait = await opts.signozClient.waitForTraceComplete(opts.traceId);
+    const wait = await opts.backend.waitForTrace(opts.traceId);
     complete = wait.complete;
-    rawSpans = await opts.signozClient.fetchSpans(opts.traceId);
-    rawLogs = await opts.signozClient.fetchLogs(opts.traceId, {
+    rawSpans = await opts.backend.fetchSpans(opts.traceId);
+    rawLogs = await opts.backend.fetchLogs(opts.traceId, {
       startMs: opts.testStartMs - 30_000,
       endMs: opts.testEndMs + 60_000,
     });

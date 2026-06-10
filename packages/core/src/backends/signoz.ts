@@ -1,4 +1,6 @@
 import type { Span, LogRecord, SpanEvent } from '../types.js';
+import { TraceOnError } from '../errors.js';
+import type { EvidenceBackend, WaitForTraceOptions, LogTimeWindow } from './interface.js';
 
 export interface SigNozConfig {
   /** Base URL, e.g. http://localhost:8080 (note: v0.50+ runs UI+API on :8080) */
@@ -7,12 +9,7 @@ export interface SigNozConfig {
   apiKey?: string;
 }
 
-export interface WaitForTraceOptions {
-  maxWaitMs: number;
-  stabilityMs: number;
-}
-
-const DEFAULT_WAIT: WaitForTraceOptions = { maxWaitMs: 60_000, stabilityMs: 10_000 };
+const DEFAULT_WAIT: WaitForTraceOptions = { maxWaitMs: 60_000, stabilityMs: 10_000, pollMs: 2_000 };
 const TRACE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 // SigNoz v3 list queries require non-empty selectColumns. SigNoz only renders a
@@ -128,8 +125,20 @@ function parseEvents(raw: unknown): SpanEvent[] {
   return events;
 }
 
-export class SigNozClient {
+export class SigNozClient implements EvidenceBackend {
   constructor(public readonly config: SigNozConfig) {}
+
+  /** Stateless HTTP client — nothing to release. */
+  async close(): Promise<void> {}
+
+  /** The remediation error shown when SigNoz can't be reached. */
+  unreachableError(): TraceOnError {
+    return new TraceOnError(
+      'TRACE_BACKEND_UNREACHABLE',
+      `SigNoz at ${this.config.baseUrl} is not responding`,
+      `Start SigNoz with \`docker compose up -d\` and verify at ${this.config.baseUrl}. If the URL is wrong, set SIGNOZ_BASE_URL in the MCP server env.`,
+    );
+  }
 
   /**
    * Cheap unauthenticated health probe. Returns ok=true with the SigNoz
@@ -206,7 +215,7 @@ export class SigNozClient {
     };
   }
 
-  async waitForTraceComplete(traceId: string, opts: WaitForTraceOptions = DEFAULT_WAIT): Promise<{ complete: boolean }> {
+  async waitForTrace(traceId: string, opts: WaitForTraceOptions = DEFAULT_WAIT): Promise<{ complete: boolean }> {
     const start = Date.now();
     let lastCount = 0;
     let lastChangeAt = Date.now();
@@ -219,7 +228,7 @@ export class SigNozClient {
       } else if (lastCount > 0 && Date.now() - lastChangeAt > opts.stabilityMs) {
         return { complete: true };
       }
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, opts.pollMs));
     }
     return { complete: false };
   }
@@ -231,7 +240,7 @@ export class SigNozClient {
     return this.normalizeSpans(raw);
   }
 
-  async fetchLogs(traceId: string, timeWindow: { startMs: number; endMs: number }): Promise<LogRecord[]> {
+  async fetchLogs(traceId: string, timeWindow: LogTimeWindow): Promise<LogRecord[]> {
     const body = this.listQuery('logs', 'trace_id', traceId, timeWindow.startMs, timeWindow.endMs);
     const raw = await this.queryRange(body);
     return this.normalizeLogs(raw);

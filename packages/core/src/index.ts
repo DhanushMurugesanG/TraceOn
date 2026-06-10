@@ -1,7 +1,14 @@
 export * from './types.js';
 export { rank, DEFAULT_RANKER_CONFIG, RankerTier1OverflowError } from './ranker.js';
-export { SigNozClient } from './connectors/signoz.js';
-export type { SigNozConfig, WaitForTraceOptions } from './connectors/signoz.js';
+export { SigNozClient } from './backends/signoz.js';
+export type { SigNozConfig } from './backends/signoz.js';
+export { createBackend } from './backends/factory.js';
+export type { BackendConfig, SigNozBackendConfig } from './backends/config.js';
+export type {
+  EvidenceBackend,
+  WaitForTraceOptions,
+  LogTimeWindow,
+} from './backends/interface.js';
 export { redactObject, redactString } from './redact.js';
 export type { RedactionRecord, RedactResult } from './redact.js';
 export { computeCoverage } from './coverage.js';

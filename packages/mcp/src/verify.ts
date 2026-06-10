@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import {
   rank,
-  SigNozClient,
+  createBackend,
   gatherEvidence,
   RankerTier1OverflowError,
   TraceOnError,
@@ -107,58 +107,65 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
   });
   const testEndMs = Date.now();
 
-  const signozConfig: { baseUrl: string; apiKey?: string } = { baseUrl: config.signozBaseUrl };
-  if (config.signozApiKey) signozConfig.apiKey = config.signozApiKey;
-  const signozClient = new SigNozClient(signozConfig);
-
-  const gathered = await gatherEvidence({
-    runId,
-    traceId,
-    evidenceDir,
-    testSummary,
-    changedFiles: parsed.changed_files,
-    intent: parsed.intent,
-    signozClient,
-    testStartMs,
-    testEndMs,
+  const backend = createBackend({
+    backend: 'signoz',
+    signoz: config.signozApiKey
+      ? { baseUrl: config.signozBaseUrl, apiKey: config.signozApiKey }
+      : { baseUrl: config.signozBaseUrl },
   });
-  const { evidence } = gathered;
 
-  let rankedPacket;
   try {
-    rankedPacket = rank(evidence);
-  } catch (err) {
-    if (err instanceof RankerTier1OverflowError) {
-      throw new TraceOnError(
-        'RANKER_TIER1_OVERFLOW',
-        err.message,
-        `The trace has too many high-priority items (${err.tier1Tokens} tokens vs ${err.budget} budget). The system is likely in a degraded state — investigate SigNoz for cascading failures before iterating.`,
-        err,
-      );
+    const gathered = await gatherEvidence({
+      runId,
+      traceId,
+      evidenceDir,
+      testSummary,
+      changedFiles: parsed.changed_files,
+      intent: parsed.intent,
+      backend,
+      testStartMs,
+      testEndMs,
+    });
+    const { evidence } = gathered;
+
+    let rankedPacket;
+    try {
+      rankedPacket = rank(evidence);
+    } catch (err) {
+      if (err instanceof RankerTier1OverflowError) {
+        throw new TraceOnError(
+          'RANKER_TIER1_OVERFLOW',
+          err.message,
+          `The trace has too many high-priority items (${err.tier1Tokens} tokens vs ${err.budget} budget). The system is likely in a degraded state — investigate the backend for cascading failures before iterating.`,
+          err,
+        );
+      }
+      throw err;
     }
-    throw err;
+    persistRun({ runId, traceId, status: testSummary.status });
+
+    const intentHint = computeIntentHint(evidence);
+
+    return {
+      run_id: runId,
+      trace_id: traceId,
+      test_status: testSummary.status,
+      test_summary: {
+        file: parsed.test,
+        name: testSummary.name,
+        duration_ms: testSummary.duration_ms,
+        steps_executed: testSummary.steps_executed,
+        failure_message: testSummary.failure_message,
+      },
+      evidence_summary: summarizeEvidence(evidence, rankedPacket.tier1.length),
+      coverage: evidence.coverage,
+      ranked_packet: rankedPacket,
+      intent_hint: intentHint,
+      evidence_path: evidenceDir,
+    };
+  } finally {
+    await backend.close();
   }
-  persistRun({ runId, traceId, status: testSummary.status });
-
-  const intentHint = computeIntentHint(evidence);
-
-  return {
-    run_id: runId,
-    trace_id: traceId,
-    test_status: testSummary.status,
-    test_summary: {
-      file: parsed.test,
-      name: testSummary.name,
-      duration_ms: testSummary.duration_ms,
-      steps_executed: testSummary.steps_executed,
-      failure_message: testSummary.failure_message,
-    },
-    evidence_summary: summarizeEvidence(evidence, rankedPacket.tier1.length),
-    coverage: evidence.coverage,
-    ranked_packet: rankedPacket,
-    intent_hint: intentHint,
-    evidence_path: evidenceDir,
-  };
 }
 
 function summarizeEvidence(evidence: RawEvidence, tier1Count: number) {
