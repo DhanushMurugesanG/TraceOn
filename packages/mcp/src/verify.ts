@@ -58,7 +58,6 @@ const VerifyArgs = z.object({
 
 export async function handleVerify(args: unknown): Promise<VerificationResult> {
   const parsed = VerifyArgs.parse(args);
-  const config = loadConfig(parsed.signoz_env);
 
   const resolvedTest = resolve(parsed.test);
   if (!existsSync(resolvedTest)) {
@@ -69,15 +68,23 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
     );
   }
 
+  // Backend selection lives in the project (.traceon/config.json), so the
+  // project root must be derived from the test path BEFORE loading config —
+  // the MCP server's cwd is not guaranteed to be the project.
+  let projectRoot: string | undefined;
+  try {
+    projectRoot = findProjectRoot(resolvedTest);
+  } catch { /* fall back to cwd inside loadConfig */ }
+  const config = loadConfig(parsed.signoz_env, projectRoot);
+
   // Skill-staleness check (once per server lifetime). If the project's
   // .claude/skills/traceon-verify/SKILL.md is from an older traceon-cli
   // install, the agent's instructions are out of date — warn the user so
   // they know to re-run `traceon init`. Soft warning to stderr, never
   // throws or blocks the verify call.
-  if (!skillVersionChecked) {
+  if (!skillVersionChecked && projectRoot) {
     skillVersionChecked = true;
     try {
-      const projectRoot = findProjectRoot(resolvedTest);
       const warning = formatStaleSkillWarning(checkSkillVersion(projectRoot));
       if (warning) console.error(warning);
     } catch { /* never let the check block the run */ }
@@ -97,6 +104,12 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
     );
   }
 
+  // The backend must exist BEFORE the test runs: push-style backends
+  // (embedded collector) receive spans while Playwright executes. start()
+  // is the pre-test hook; SigNoz doesn't implement it (always-on service).
+  const backend = await createBackend(config.backendConfig);
+  await backend.start?.();
+
   const testStartMs = Date.now();
   const testSummary = await runPlaywright({
     test: parsed.test,
@@ -106,13 +119,6 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
     extraEnv: parsed.extra_env,
   });
   const testEndMs = Date.now();
-
-  const backend = await createBackend({
-    backend: 'signoz',
-    signoz: config.signozApiKey
-      ? { baseUrl: config.signozBaseUrl, apiKey: config.signozApiKey }
-      : { baseUrl: config.signozBaseUrl },
-  });
 
   try {
     const gathered = await gatherEvidence({

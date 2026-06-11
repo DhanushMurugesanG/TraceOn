@@ -1,17 +1,22 @@
 import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { collectorBinaryPath, OTELCOL_VERSION } from '@traceon/core';
+import { readProjectBackendConfig } from '../../config.js';
 import type { CheckFn } from '../types.js';
 import { fetchWithTimeout } from './_http.js';
 
 /**
- * Check 6 — SigNoz (or whichever observability backend is configured)
- * is reachable.
+ * Check 6 — the configured trace backend is available.
  *
- * Reads the user's MCP server config (from Claude Code's ~/.claude.json
- * or the project's .traceon directory if it ever moves there) and pulls
- * the SIGNOZ_BASE_URL env var from the traceon entry. Falls back to the
- * common default if not found.
+ * Embedded backend (project .traceon/config.json says so): verify the
+ * collector binary is installed — the collector itself is spawned lazily
+ * by the MCP server, so there's no live process to probe at doctor time.
+ *
+ * SigNoz backend: reads the user's MCP server config (from Claude Code's
+ * ~/.claude.json or Claude Desktop's config) and pulls the
+ * SIGNOZ_BASE_URL env var from the traceon entry, falling back to the
+ * common default. HEADs it.
  */
 
 const SIGNOZ_DEFAULT = 'http://localhost:8080';
@@ -33,6 +38,24 @@ function readSignozUrlFromClaudeConfig(): string | undefined {
 }
 
 export const signozReachable: CheckFn = async (ctx) => {
+  const backendConfig = readProjectBackendConfig(ctx.projectRoot);
+  if (backendConfig?.backend === 'embedded') {
+    const binPath = collectorBinaryPath();
+    if (existsSync(binPath)) {
+      return {
+        name: 'Embedded collector installed',
+        status: 'pass',
+        message: `otelcol-contrib v${OTELCOL_VERSION} at ${binPath}`,
+      };
+    }
+    return {
+      name: 'Embedded collector installed',
+      status: 'fail',
+      message: `Collector binary not found at ${binPath}`,
+      fix: 'Re-run `traceon init` and choose the embedded backend to download it.',
+    };
+  }
+
   const url = readSignozUrlFromClaudeConfig() ?? SIGNOZ_DEFAULT;
   ctx.signozBaseUrl = url;
 

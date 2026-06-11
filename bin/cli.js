@@ -84,18 +84,61 @@ async function init() {
     process.exit(1);
   }
 
+  // Backend choice. Embedded is the default: no Docker, no SigNoz, no API
+  // key — TraceOn downloads its own OTel Collector on first init. SigNoz
+  // stays fully supported for users who already run it.
   const rl = createInterface({ input, output });
-  let apiKey, baseUrl;
+  let backendChoice, apiKey, baseUrl, otlpPort;
   try {
-    apiKey = (await rl.question('SigNoz API key (required): ')).trim();
-    if (!apiKey) {
-      console.error('\nAPI key is required. Generate one in SigNoz: Settings -> API Keys.');
-      process.exit(1);
+    console.log('Choose a trace backend:');
+    console.log('  1. Embedded (recommended) — TraceOn runs its own collector. No Docker, no API key.');
+    console.log('  2. SigNoz — bring your own SigNoz install.');
+    const choice = (await rl.question('Backend [1]: ')).trim();
+    backendChoice = choice === '2' ? 'signoz' : 'embedded';
+
+    if (backendChoice === 'signoz') {
+      apiKey = (await rl.question('SigNoz API key (required): ')).trim();
+      if (!apiKey) {
+        console.error('\nAPI key is required. Generate one in SigNoz: Settings -> API Keys.');
+        process.exit(1);
+      }
+      const baseUrlAnswer = (await rl.question('SigNoz base URL [http://localhost:8080]: ')).trim();
+      baseUrl = baseUrlAnswer || 'http://localhost:8080';
     }
-    const baseUrlAnswer = (await rl.question('SigNoz base URL [http://localhost:8080]: ')).trim();
-    baseUrl = baseUrlAnswer || 'http://localhost:8080';
   } finally {
     rl.close();
+  }
+
+  if (backendChoice === 'embedded') {
+    // Lazy-download the pinned otelcol-contrib binary (~95 MB, one-time,
+    // checksum-verified into ~/.traceon/bin). Loaded dynamically so the
+    // SigNoz path never pays for this module.
+    const setupBundle = join(packageRoot, 'dist', 'embedded-setup.js');
+    if (!existsSync(setupBundle)) {
+      console.error(`Embedded setup bundle not found at ${setupBundle}.`);
+      console.error('This usually means the package install is incomplete. Try reinstalling.');
+      process.exit(1);
+    }
+    const { ensureCollectorBinary, DEFAULT_OTLP_PORT } = await import(setupBundle);
+    otlpPort = DEFAULT_OTLP_PORT;
+    console.log('');
+    try {
+      await ensureCollectorBinary({ onProgress: (m) => console.log(`  ${m}`) });
+    } catch (err) {
+      console.error(`\nCollector install failed: ${err.message}`);
+      if (err.userGuidance) console.error(err.userGuidance);
+      process.exit(1);
+    }
+
+    // Project-scoped backend selection. The MCP server reads this (resolved
+    // from the test file's project root) on every verify call.
+    const configDest = join(process.cwd(), '.traceon', 'config.json');
+    mkdirSync(dirname(configDest), { recursive: true });
+    writeFileSync(
+      configDest,
+      JSON.stringify({ backend: 'embedded', embedded: { port: otlpPort } }, null, 2) + '\n',
+    );
+    console.log(`[ok] Wrote backend config to ${configDest}`);
   }
 
   // 1. Register the MCP server with BOTH Claude products — Claude Desktop
@@ -103,13 +146,14 @@ async function init() {
   // Code (the CLI at ~/.claude.json). They use different config files even
   // though both are called "Claude". Writing to both is harmless if the
   // user only has one installed — the unused config file just sits there.
+  // Embedded mode needs no env config — backend selection lives in the
+  // project's .traceon/config.json.
   const serverEntry = {
     command: 'node',
     args: [mcpServerPath],
-    env: {
-      SIGNOZ_API_KEY: apiKey,
-      SIGNOZ_BASE_URL: baseUrl,
-    },
+    env: backendChoice === 'signoz'
+      ? { SIGNOZ_API_KEY: apiKey, SIGNOZ_BASE_URL: baseUrl }
+      : {},
   };
   const desktopPath = writeMcpServerToConfig(claudeDesktopConfigPath(), serverEntry);
   console.log(`\n[ok] Registered traceon in Claude Desktop config: ${desktopPath}`);
@@ -140,6 +184,14 @@ async function init() {
     console.log('       pnpm add -D @playwright/test     (or `npm install --save-dev @playwright/test`)');
     console.log('       pnpm exec playwright install chromium');
   }
+  if (backendChoice === 'embedded') {
+    console.log(`  ${stepN++}. Point your backend's OTel exporter at TraceOn's collector:`);
+    console.log(`       OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:${otlpPort}`);
+    console.log('       OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf');
+    console.log('     (or the equivalent exporter config in your OTel SDK bootstrap —');
+    console.log('      keep any existing exporters and add this as a second target if');
+    console.log('      you already ship traces elsewhere)');
+  }
   console.log(`  ${stepN++}. Fully quit Claude Code (Cmd+Q on macOS, not just close the window) and reopen it.`);
   console.log(`  ${stepN++}. Verify the traceon_verify tool appears in the tool list.`);
   console.log(`  ${stepN++}. Ask Claude to add a feature in this project and TraceOn will verify it.`);
@@ -161,9 +213,11 @@ Usage:
   traceon --help      Show this message.
 
 Prerequisites for init:
-  - SigNoz running locally (or accessible at a URL you'll be prompted for)
-  - SigNoz API key (generate at <signoz-url>/settings/api-keys)
-  - Claude Code installed`);
+  - Claude Code installed
+  - Embedded backend (default): nothing else — the OTel collector is
+    downloaded automatically on first init (~95 MB, one-time)
+  - SigNoz backend: SigNoz running locally + an API key
+    (generate at <signoz-url>/settings/api-keys)`);
 }
 
 const doctorScriptPath = join(packageRoot, 'dist', 'doctor.js');

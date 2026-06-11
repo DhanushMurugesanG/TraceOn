@@ -57,6 +57,20 @@ if (doctorResult.errors.length > 0) {
 }
 console.log('Bundled doctor runner -> dist/doctor.js');
 
+// 3. Embedded-mode setup bundle (collector binary install) — dynamically
+//    imported by `traceon init` only when the user picks the embedded
+//    backend, so the SigNoz path never pays its load cost.
+const embeddedSetupResult = await build({
+  ...sharedOpts,
+  entryPoints: [resolve(repoRoot, 'packages/mcp/src/embedded-setup.ts')],
+  outfile: resolve(repoRoot, 'dist/embedded-setup.js'),
+});
+if (embeddedSetupResult.errors.length > 0) {
+  console.error('Embedded-setup bundle had errors:', embeddedSetupResult.errors);
+  process.exit(1);
+}
+console.log('Bundled embedded setup -> dist/embedded-setup.js');
+
 // Copy the compiled Playwright fixture into lib/ so it ships in the tarball
 // and `traceon init` can write it into the user's project as a regular file.
 mkdirSync(resolve(repoRoot, 'lib'), { recursive: true });
