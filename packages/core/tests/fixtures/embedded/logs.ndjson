@@ -1,0 +1,1 @@
+{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"spike-svc"}}]},"scopeLogs":[{"scope":{"name":"spike"},"logRecords":[{"timeUnixNano":"1781152799000000000","severityText":"ERROR","body":{"stringValue":"payment failed"},"traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331"}]}]}]}

@@ -3,7 +3,12 @@ export type TraceOnErrorCode =
   | 'PLAYWRIGHT_SPAWN_FAILED'
   | 'TRACE_BACKEND_UNREACHABLE'
   | 'RANKER_TIER1_OVERFLOW'
-  | 'EVIDENCE_DIR_WRITE_FAILED';
+  | 'EVIDENCE_DIR_WRITE_FAILED'
+  // Embedded-collector mode (v0.2.0)
+  | 'EMBEDDED_PLATFORM_UNSUPPORTED'
+  | 'EMBEDDED_DOWNLOAD_FAILED'
+  | 'EMBEDDED_CHECKSUM_MISSING'
+  | 'EMBEDDED_CHECKSUM_MISMATCH';
 
 /**
  * Structured error type for all TraceOn failures the agent skill should
