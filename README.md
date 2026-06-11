@@ -4,27 +4,28 @@ Runtime verification for AI coding agents. TraceOn is an MCP server that lets Cl
 
 ## What it does
 
-After Claude Code edits your code, it calls TraceOn with a Playwright test it wrote. TraceOn runs the test, captures distributed traces from your services via OpenTelemetry + SigNoz, ranks the evidence by importance, and returns a structured `VerificationResult`. Claude then reasons over that evidence to decide done / iterate / surface to you.
+After Claude Code edits your code, it calls TraceOn with a Playwright test it wrote. TraceOn runs the test, captures distributed traces from your services via OpenTelemetry, ranks the evidence by importance, and returns a structured `VerificationResult`. Claude then reasons over that evidence to decide done / iterate / surface to you.
 
 The point isn't to make verification automatic. It's to make verification honest: real runtime evidence in the agent's loop, not just what Claude claims happened.
 
+As of v0.2.0, TraceOn ships **embedded mode**: it downloads and runs its own OTel Collector on first `traceon init`. No Docker, no SigNoz install, no API key — your backend exports OTLP straight to TraceOn's local port. Users who already run SigNoz can keep using it (see "Bring your own backend").
+
 ## Status
 
-Alpha. v1 ships with:
+Alpha. v0.2.0 ships with:
 
-- A single backend connector (SigNoz)
+- **Embedded backend (default)** — TraceOn runs its own OTel Collector; zero extra services
+- SigNoz backend for existing installs (fully backward compatible)
 - Mac and Linux only (Windows planned for v1.2)
-- Manual MCP setup (`traceon init` automation planned for v1.1)
 - A sample app (sibling repo `traceon-spike`) for testing
 
 ## Prerequisites
 
 - Node.js 22+
 - pnpm 11+
-- Docker (for SigNoz)
 - Claude Code (with MCP server support)
-- A SigNoz API key (generate at `localhost:8080` → Settings → API Keys)
 - A web app with a frontend that talks to an OTel-instrumented backend
+- For the SigNoz backend only: Docker, a running SigNoz, and an API key
 - **If frontend and backend live on different origins**, the backend's CORS
   policy must include `traceparent` (and `tracestate` if you use W3C trace
   context) in `Access-Control-Allow-Headers`. Without that, the browser
@@ -39,24 +40,31 @@ Alpha. v1 ships with:
 
 ## Quick start
 
-### 1. Start SigNoz
-
-Follow the [SigNoz Docker install guide](https://signoz.io/docs/install/docker/). Verify it's running at `http://localhost:8080`. Sign up locally and generate an API key under **Settings → API Keys**.
-
-### 2. Install TraceOn
+### 1. Install TraceOn
 
 ```bash
 npm install -g traceon-cli
 ```
 
-### 3. Initialize in your project
+### 2. Initialize in your project
 
 ```bash
 cd your-project
 traceon init
 ```
 
-`init` prompts for your SigNoz API key and base URL, registers the MCP server in Claude Code's `claude_desktop_config.json`, and installs the `traceon-verify` skill into `your-project/.claude/skills/`.
+Pick **Embedded** at the backend prompt (the default). `init` downloads TraceOn's OTel Collector (~95 MB, one-time, checksum-verified into `~/.traceon/bin/`), writes `.traceon/config.json` into your project, registers the MCP server with Claude Code, and installs the `traceon-verify` skill into `your-project/.claude/skills/`.
+
+### 3. Point your backend's OTel exporter at TraceOn
+
+The one manual step. In your backend's OTel SDK bootstrap (or environment):
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4319
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+If you already export traces to an observability stack, keep that exporter and add TraceOn as a second target (OTel SDKs support multiple span processors natively) — see [docs/embedded-mode-setup.md](docs/embedded-mode-setup.md) for per-language snippets.
 
 ### 4. Restart Claude Code
 
@@ -69,6 +77,12 @@ In Claude Code, ask for a small user-facing change in your project — for examp
 > Add a character counter under the textarea on the home page. Make sure it works.
 
 Claude should write the implementation, write a Playwright test, call `traceon_verify`, read the evidence, and report what was verified. If anything fails, Claude iterates — up to 3 times — based on the Tier 1 evidence.
+
+## Bring your own backend (SigNoz)
+
+If you already run SigNoz, pick **SigNoz** at the `traceon init` backend prompt. You'll need SigNoz running (the [Docker install guide](https://signoz.io/docs/install/docker/)) and an API key (**Settings → API Keys**). Existing pre-v0.2.0 installs keep working without any changes — env-var-configured SigNoz setups are detected automatically when no `.traceon/config.json` names a backend.
+
+With SigNoz you also get its UI for ad-hoc trace exploration; embedded mode stores traces per-run with no UI. That's the trade.
 
 ## Troubleshooting
 
@@ -85,7 +99,7 @@ It runs eight preflight checks in ~10 seconds and tells you what's wrong before 
 - **Frontend reachable** at the baseURL
 - **Backend reachable** at the detected backend URL (from vite proxy, `.env`, or common defaults)
 - **CORS allows `traceparent`** — the biggest silent failure mode; without this, TraceOn sees zero backend spans even though tests "pass"
-- **SigNoz reachable** at the configured URL
+- **Backend available** — embedded: the collector binary is installed; SigNoz: the configured URL responds
 - **MCP server is registered** with Claude Code (`claude mcp list` includes `traceon`)
 - **Skill is up to date** — your project's `.claude/skills/traceon-verify/SKILL.md` matches the bundled version (see "Upgrading" below)
 
@@ -124,22 +138,39 @@ TraceOn captures real runtime evidence — actual HTTP requests, real backend sp
 
 ## Configuration
 
-Environment variables read by the MCP server:
+Backend selection lives in `<your-project>/.traceon/config.json`, written by `traceon init`:
+
+```jsonc
+{
+  "backend": "embedded",          // or "signoz"
+  "embedded": {
+    "port": 4319,                 // OTLP/HTTP receiver port
+    "settle": {                   // optional trace-settle tuning
+      "maxWaitMs": 60000,         // hard ceiling on the wait
+      "stabilityMs": 10000,       // "settled" = span count unchanged this long
+      "pollMs": 2000              // how often to re-check
+    }
+  }
+}
+```
+
+When no config file names a backend, the MCP server derives a SigNoz config from env vars — exactly the pre-v0.2.0 behavior:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SIGNOZ_API_KEY` | — | Required. Sent as `SIGNOZ-API-KEY` header to SigNoz. |
+| `SIGNOZ_API_KEY` | — | Sent as `SIGNOZ-API-KEY` header to SigNoz. |
 | `SIGNOZ_BASE_URL` | `http://localhost:8080` | SigNoz UI / API base URL. |
 | `TRACEON_EVIDENCE_ROOT` | `.traceon/runs` | Where to write per-run evidence directories. |
 
-Run history is persisted to `~/.traceon/runs.db` (SQLite). Per-run evidence (raw spans, logs, browser events) lands under `${TRACEON_EVIDENCE_ROOT}/<run_id>/`.
+Run history is persisted to `~/.traceon/runs.db` (SQLite). Per-run evidence (raw spans, logs, browser events) lands under `${TRACEON_EVIDENCE_ROOT}/<run_id>/`. Embedded-mode trace files live in `~/.traceon/embedded/` and are cleared at the start of each MCP server session.
 
 ## Limits
 
-- **SigNoz only.** Other observability backends (Tempo, Honeycomb, Datadog) aren't supported. The connector layer is designed to allow more; only SigNoz ships in v1.
+- **Two backends: embedded (default) and SigNoz.** Tempo / Jaeger / Datadog / Honeycomb are planned on the same `EvidenceBackend` interface (v0.3.0+).
+- **Embedded mode captures backend logs only if your OTel SDK exports them.** Most trace-only SDK setups produce spans but no OTLP logs; trace evidence is unaffected.
 - **Mac and Linux only.** Windows support is planned for v1.2.
 - **File-level coverage attribution is OpenTelemetry-limited.** Backend spans are attributed by OTel to the route/framework, not the specific source file that ran. TraceOn surfaces this as `coverage.attribution_limited: true` rather than a false alarm; the skill knows to downgrade the warning when the test asserted on a real response body.
-- **The SigNoz wait is fixed at 60s.** TraceOn skips the wait entirely for tests that fire no responses (returns in ~2s), but otherwise the wait isn't currently tunable per call.
+- **The trace-settle wait defaults to 60s max.** TraceOn skips the wait entirely for tests that fire no responses (returns in ~2s). Embedded mode exposes the settle timings via `.traceon/config.json`; the SigNoz wait isn't currently tunable per call.
 - **No CI/CD integration.** v1 is for local dev / staging. Production environment safety is out of scope.
 - **TraceOn doesn't generate verdicts.** The agent (Claude Code) reasons over the evidence. The MCP tool returns structured `VerificationResult`s only.
 - **Iteration logic lives in the skill, not the tool.** TraceOn is stateless per call. Iteration discipline is enforced by `skills/traceon-verify/SKILL.md`.

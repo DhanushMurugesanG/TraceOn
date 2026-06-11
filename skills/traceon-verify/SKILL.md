@@ -1,6 +1,6 @@
 ---
 name: traceon-verify
-version: 0.0.11
+version: 0.2.0
 description: Use this skill when implementing or fixing user-facing features in projects that have TraceOn configured. Trigger words include "add", "implement", "build", "create", "fix bug in", or any feature work where behavior changes are observable in a running application. Use it especially when the change crosses frontend and backend, where visual confirmation isn't enough.
 ---
 
@@ -462,18 +462,24 @@ action the user owns.
 
 #### `code === "TRACE_BACKEND_UNREACHABLE"`
 
-SigNoz isn't responding at the configured URL. TraceOn needs SigNoz
-to capture trace evidence.
+The trace backend isn't available. Depending on the project's config
+this is either SigNoz not responding at its URL, or TraceOn's embedded
+OTel collector not running. The `message` says which; the evidence
+packet is identical either way — you never need to know or care which
+backend produced it.
 
 Surface:
 
-> I can't verify because SigNoz isn't responding:
+> I can't verify because the trace backend isn't available:
 > - [message]
 > - [userGuidance]
 >
-> Once SigNoz is up, ask me to retry.
+> Once it's up, ask me to retry.
 
-Do NOT attempt to start SigNoz or modify Docker yourself.
+Do NOT attempt to start SigNoz, modify Docker, or manage the embedded
+collector yourself. (Embedded-collector errors also appear as
+`EMBEDDED_*` codes — same rule: surface the message and userGuidance,
+don't try to fix infrastructure.)
 
 #### `code === "RANKER_TIER1_OVERFLOW"`
 
@@ -491,7 +497,7 @@ Surface immediately with strong language:
 > - [message]
 >
 > This isn't a bug in my change. Iterating won't help. Please investigate
-> SigNoz directly before making any further changes.
+> the trace backend directly before making any further changes.
 
 #### `code === "EVIDENCE_DIR_WRITE_FAILED"`
 
@@ -536,10 +542,10 @@ even when individual decisions look reasonable.
   user with options," wait for the user's actual choice. Picking the
   first option because it seems reasonable defeats the safety mechanism.
 
-- **Do NOT attempt to fix infrastructure errors.** SigNoz down, Playwright
-  missing, MCP server unreachable — these are user-controlled
-  infrastructure. Surface clearly, don't try to repair what you don't
-  control.
+- **Do NOT attempt to fix infrastructure errors.** Trace backend down
+  (SigNoz or the embedded collector), Playwright missing, MCP server
+  unreachable — these are user-controlled infrastructure. Surface
+  clearly, don't try to repair what you don't control.
 
 - **Do NOT skip TraceOn verification on changes that should have it.**
   If the feature is user-facing and observable, run TraceOn. Skipping

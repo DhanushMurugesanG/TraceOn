@@ -27,7 +27,7 @@ process.on('SIGTERM', () => void shutdown(143));
 process.stdin.on('close', () => void shutdown(0));
 
 const server = new Server(
-  { name: 'traceon', version: '0.1.0' },
+  { name: 'traceon', version: '0.2.0' },
   { capabilities: { tools: {} } },
 );
 

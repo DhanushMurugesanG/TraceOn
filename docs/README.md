@@ -4,6 +4,10 @@ Design notes, architecture writeups, and reference material for TraceOn.
 
 ## Setup guides
 
+- [embedded-mode-setup.md](embedded-mode-setup.md) — embedded mode
+  (default since v0.2.0): how the embedded OTel collector works,
+  per-language exporter snippets (Node/Go/Python), the dual-exporter
+  pattern, config reference, troubleshooting.
 - [auth-and-cors-setup.md](auth-and-cors-setup.md) — two common gotchas
   when pointing TraceOn at a real-world app: auth-protected backends
   (token handling) and `traceparent` CORS allow-headers.
@@ -37,4 +41,9 @@ Design notes, architecture writeups, and reference material for TraceOn.
   the four-phase plan to ship embedded mode (no SigNoz required) and
   multi-backend support (Tempo, Jaeger, Datadog, Honeycomb). Targets the
   recurring "setup friction is brutal" feedback. Includes the
-  "alternative triggers" matrix.
+  "alternative triggers" matrix. NOTE: v0.2.0 shipped embedded mode with
+  a downloaded otelcol-contrib binary + File exporter (decided in the
+  v0.2.0 kickoff), superseding this doc's in-process receiver + SQLite
+  design for Phase 1. The interface and init-UX intent shipped as planned.
+- [v1.1-candidates.md](v1.1-candidates.md) — improvement ideas logged
+  during releases under the "no new product ideas mid-release" rule.
