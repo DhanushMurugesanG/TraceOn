@@ -107,7 +107,7 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
   });
   const testEndMs = Date.now();
 
-  const backend = createBackend({
+  const backend = await createBackend({
     backend: 'signoz',
     signoz: config.signozApiKey
       ? { baseUrl: config.signozBaseUrl, apiKey: config.signozApiKey }
