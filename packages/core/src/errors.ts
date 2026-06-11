@@ -8,7 +8,10 @@ export type TraceOnErrorCode =
   | 'EMBEDDED_PLATFORM_UNSUPPORTED'
   | 'EMBEDDED_DOWNLOAD_FAILED'
   | 'EMBEDDED_CHECKSUM_MISSING'
-  | 'EMBEDDED_CHECKSUM_MISMATCH';
+  | 'EMBEDDED_CHECKSUM_MISMATCH'
+  | 'EMBEDDED_PORT_BUSY'
+  | 'EMBEDDED_COLLECTOR_SPAWN_FAILED'
+  | 'EMBEDDED_COLLECTOR_DOWN';
 
 /**
  * Structured error type for all TraceOn failures the agent skill should
