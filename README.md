@@ -19,6 +19,8 @@ Alpha. v0.2.0 ships with:
 - Mac and Linux only (Windows planned for v1.2)
 - A sample app (sibling repo `traceon-spike`) for testing
 
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Prerequisites
 
 - Node.js 22+
@@ -45,6 +47,14 @@ Alpha. v0.2.0 ships with:
 ```bash
 npm install -g traceon-cli
 ```
+
+During the v0.2.0 shakeout, v0.2.0 is published under the npm `next` tag (`latest` is still 0.0.11), so install it with `@next`:
+
+```bash
+npm install -g traceon-cli@next
+```
+
+Once v0.2.0 is promoted to `latest`, the plain `npm install -g traceon-cli` above will pull it.
 
 ### 2. Initialize in your project
 
