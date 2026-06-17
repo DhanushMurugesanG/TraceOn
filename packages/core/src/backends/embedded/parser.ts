@@ -1,4 +1,5 @@
 import type { Span, LogRecord, SpanEvent } from '../../types.js';
+import { nanosToMs, coerceHttpStatusCode } from '../shared.js';
 
 /**
  * Parser for the OTel File exporter's `format: json` output: newline-
@@ -47,11 +48,6 @@ function flattenAttributes(list: unknown): Record<string, string | number | bool
     if (v !== undefined) out[item.key] = v;
   }
   return out;
-}
-
-function nanosToMs(value: unknown): number {
-  const n = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : NaN;
-  return Number.isFinite(n) ? Math.floor(n / 1_000_000) : 0;
 }
 
 /** Normalize an OTLP/JSON id: lowercase hex passthrough, base64 fallback. */
@@ -124,13 +120,10 @@ export function parseTraces(content: string): Span[] {
           const end = nanosToMs(s['endTimeUnixNano']);
           // SigNoz parity: surface a numeric http.status_code attribute when
           // the span carries one in any of the semconv spellings.
-          const httpCode =
-            attributes['http.status_code'] ?? attributes['http.response.status_code'];
-          if (typeof httpCode === 'string' && httpCode.length > 0 && Number.isFinite(Number(httpCode))) {
-            attributes['http.status_code'] = Number(httpCode);
-          } else if (typeof httpCode === 'number') {
-            attributes['http.status_code'] = httpCode;
-          }
+          coerceHttpStatusCode(
+            attributes,
+            attributes['http.status_code'] ?? attributes['http.response.status_code'],
+          );
           const parent = normalizeId(s['parentSpanId']);
           out.push({
             span_id: normalizeId(s['spanId']),

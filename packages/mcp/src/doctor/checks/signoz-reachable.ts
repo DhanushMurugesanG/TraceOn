@@ -56,7 +56,13 @@ export const signozReachable: CheckFn = async (ctx) => {
     };
   }
 
-  const url = readSignozUrlFromClaudeConfig() ?? SIGNOZ_DEFAULT;
+  // Prefer the baseUrl the verify path will actually use: a config-file
+  // SigNoz block wins over the Claude MCP env var, which wins over the
+  // default. Otherwise doctor and verify can probe different URLs.
+  const url =
+    (backendConfig?.backend === 'signoz' ? backendConfig.signoz.baseUrl : undefined) ??
+    readSignozUrlFromClaudeConfig() ??
+    SIGNOZ_DEFAULT;
   ctx.signozBaseUrl = url;
 
   const res = await fetchWithTimeout(url, { method: 'HEAD', timeoutMs: 3000 });

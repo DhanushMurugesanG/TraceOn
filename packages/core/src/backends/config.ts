@@ -1,4 +1,16 @@
-import type { EmbeddedConfig } from './embedded/client.js';
+import type { WaitForTraceOptions } from './interface.js';
+
+/**
+ * Tuning for the embedded collector. Declared here (not in client.ts) so the
+ * config-shape types don't drag the collector/binary/subprocess subsystem
+ * into every module that only needs the shape.
+ */
+export interface EmbeddedConfig {
+  port?: number;
+  dataDir?: string;
+  /** Override the settle defaults; exposed via the embedded config block. */
+  settle?: Partial<WaitForTraceOptions>;
+}
 
 /**
  * Backend selection config. A discriminated union on `backend`.

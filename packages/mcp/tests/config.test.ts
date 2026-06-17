@@ -110,6 +110,44 @@ describe('loadConfig with .traceon/config.json', () => {
   it('readProjectBackendConfig returns undefined when no file exists', () => {
     expect(readProjectBackendConfig(projectRoot)).toBeUndefined();
   });
+
+  describe('embedded.settle sanitization', () => {
+    function settleOf(cfg: ReturnType<typeof loadConfig>): Record<string, number> | undefined {
+      return (cfg.backendConfig as { embedded?: { settle?: Record<string, number> } }).embedded
+        ?.settle;
+    }
+
+    it('keeps valid positive numbers', () => {
+      writeProjectConfig({
+        backend: 'embedded',
+        embedded: { settle: { maxWaitMs: 30000, stabilityMs: 5000, pollMs: 1000 } },
+      });
+      expect(settleOf(loadConfig('default', projectRoot))).toEqual({
+        maxWaitMs: 30000,
+        stabilityMs: 5000,
+        pollMs: 1000,
+      });
+    });
+
+    it('drops pollMs:0 (would busy-loop) and floors small pollMs', () => {
+      writeProjectConfig({ backend: 'embedded', embedded: { settle: { pollMs: 0 } } });
+      // 0 is invalid → dropped entirely → no settle override.
+      expect(settleOf(loadConfig('default', projectRoot))).toBeUndefined();
+
+      writeProjectConfig({ backend: 'embedded', embedded: { settle: { pollMs: 5 } } });
+      // valid but below the floor → clamped to the minimum.
+      expect(settleOf(loadConfig('default', projectRoot))).toEqual({ pollMs: 50 });
+    });
+
+    it('drops non-numeric / negative / NaN settle values', () => {
+      writeProjectConfig({
+        backend: 'embedded',
+        embedded: { settle: { stabilityMs: 'fast', maxWaitMs: -1, pollMs: 1000 } },
+      });
+      // only the valid pollMs survives
+      expect(settleOf(loadConfig('default', projectRoot))).toEqual({ pollMs: 1000 });
+    });
+  });
 });
 
 describe('doctor backend check with embedded config', () => {
@@ -126,5 +164,20 @@ describe('doctor backend check with embedded config', () => {
     const ctx: DoctorContext = { cwd: projectRoot, projectRoot };
     const result = await signozReachable(ctx);
     expect(result.name).toContain('SigNoz');
+  });
+
+  it('probes the config-file SigNoz baseUrl, not just the env/default', async () => {
+    // A config.json SigNoz block with a custom, unreachable URL: doctor must
+    // probe THAT (matching what verify uses), not localhost:8080.
+    writeProjectConfig({
+      backend: 'signoz',
+      signoz: { baseUrl: 'http://signoz.invalid:9999' },
+    });
+    const ctx: DoctorContext = { cwd: projectRoot, projectRoot };
+    const result = await signozReachable(ctx);
+    expect(ctx.signozBaseUrl).toBe('http://signoz.invalid:9999');
+    expect(`${result.name} ${result.message ?? ''} ${result.detail ?? ''}`).toContain(
+      'signoz.invalid:9999',
+    );
   });
 });

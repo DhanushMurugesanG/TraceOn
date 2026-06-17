@@ -1,6 +1,7 @@
 import type { Span, LogRecord, SpanEvent } from '../types.js';
 import { TraceOnError } from '../errors.js';
 import type { EvidenceBackend, WaitForTraceOptions, LogTimeWindow } from './interface.js';
+import { DEFAULT_WAIT, nanosToMs, coerceHttpStatusCode, waitForTraceSettle } from './shared.js';
 
 export interface SigNozConfig {
   /** Base URL, e.g. http://localhost:8080 (note: v0.50+ runs UI+API on :8080) */
@@ -9,7 +10,6 @@ export interface SigNozConfig {
   apiKey?: string;
 }
 
-const DEFAULT_WAIT: WaitForTraceOptions = { maxWaitMs: 60_000, stabilityMs: 10_000, pollMs: 2_000 };
 const TRACE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 // SigNoz v3 list queries require non-empty selectColumns. SigNoz only renders a
@@ -57,15 +57,6 @@ interface QueryRangeResponse {
   status?: string;
   data?: { result?: Array<{ queryName?: string; list?: QueryRangeListItem[] }> };
   error?: string;
-}
-
-function nanosToMs(value: unknown): number {
-  if (typeof value === 'number') return Math.floor(value / 1_000_000);
-  if (typeof value === 'string') {
-    const n = Number(value);
-    return Number.isFinite(n) ? Math.floor(n / 1_000_000) : 0;
-  }
-  return 0;
 }
 
 function isoToMs(value: unknown): number {
@@ -127,6 +118,10 @@ function parseEvents(raw: unknown): SpanEvent[] {
 
 export class SigNozClient implements EvidenceBackend {
   constructor(public readonly config: SigNozConfig) {}
+
+  /** Query-style backend: SigNoz is an always-on service, so there's no
+   *  per-run startup. No-op to satisfy the interface contract. */
+  async start(): Promise<void> {}
 
   /** Stateless HTTP client — nothing to release. */
   async close(): Promise<void> {}
@@ -216,21 +211,7 @@ export class SigNozClient implements EvidenceBackend {
   }
 
   async waitForTrace(traceId: string, opts: WaitForTraceOptions = DEFAULT_WAIT): Promise<{ complete: boolean }> {
-    const start = Date.now();
-    let lastCount = 0;
-    let lastChangeAt = Date.now();
-
-    while (Date.now() - start < opts.maxWaitMs) {
-      const spans = await this.fetchSpans(traceId);
-      if (spans.length !== lastCount) {
-        lastCount = spans.length;
-        lastChangeAt = Date.now();
-      } else if (lastCount > 0 && Date.now() - lastChangeAt > opts.stabilityMs) {
-        return { complete: true };
-      }
-      await new Promise((r) => setTimeout(r, opts.pollMs));
-    }
-    return { complete: false };
+    return waitForTraceSettle(async () => (await this.fetchSpans(traceId)).length, opts);
   }
 
   async fetchSpans(traceId: string): Promise<Span[]> {
@@ -257,11 +238,7 @@ export class SigNozClient implements EvidenceBackend {
         : isoToMs(item.timestamp);
       const duration = nanosToMs(d['durationNano']);
       const end = typeof d['endTimeUnixNano'] !== 'undefined' ? nanosToMs(d['endTimeUnixNano']) : start + duration;
-      const httpCode = d['responseStatusCode'] ?? d['httpStatusCode'];
-      if (typeof httpCode === 'number') attributes['http.status_code'] = httpCode;
-      else if (typeof httpCode === 'string' && httpCode.length > 0 && Number.isFinite(Number(httpCode))) {
-        attributes['http.status_code'] = Number(httpCode);
-      }
+      coerceHttpStatusCode(attributes, d['responseStatusCode'] ?? d['httpStatusCode']);
       out.push({
         span_id: String(d['spanID'] ?? d['span_id'] ?? ''),
         parent_span_id: typeof d['parentSpanID'] === 'string' && d['parentSpanID'].length > 0

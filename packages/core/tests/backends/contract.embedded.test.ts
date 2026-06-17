@@ -216,4 +216,26 @@ describe('getEmbeddedBackend singleton', () => {
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
+
+  it('rebuilds (not reuses) the backend when a different project config arrives', async () => {
+    const { getEmbeddedBackend, shutdownEmbeddedBackend } = await import(
+      '../../src/backends/embedded/client.js'
+    );
+    const dirA = mkdtempSync(join(tmpdir(), 'traceon-embedded-projA-'));
+    const dirB = mkdtempSync(join(tmpdir(), 'traceon-embedded-projB-'));
+    const ensureBinary = async () => '/fake/otelcol';
+    try {
+      const a = await getEmbeddedBackend({ dataDir: dirA, port: 4319, ensureBinary });
+      // Same config → same instance.
+      expect(await getEmbeddedBackend({ dataDir: dirA, port: 4319, ensureBinary })).toBe(a);
+      // Different port → must NOT silently reuse project A's collector.
+      const b = await getEmbeddedBackend({ dataDir: dirB, port: 4400, ensureBinary });
+      expect(b).not.toBe(a);
+      expect(b.tracesFile).toContain('projB');
+      await shutdownEmbeddedBackend();
+    } finally {
+      rmSync(dirA, { recursive: true, force: true });
+      rmSync(dirB, { recursive: true, force: true });
+    }
+  });
 });

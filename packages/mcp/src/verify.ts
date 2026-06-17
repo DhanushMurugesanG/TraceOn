@@ -104,23 +104,25 @@ export async function handleVerify(args: unknown): Promise<VerificationResult> {
     );
   }
 
-  // The backend must exist BEFORE the test runs: push-style backends
-  // (embedded collector) receive spans while Playwright executes. start()
-  // is the pre-test hook; SigNoz doesn't implement it (always-on service).
+  // The backend must exist and be listening BEFORE the test runs: push-style
+  // backends (embedded collector) receive spans while Playwright executes.
+  // start() is the pre-test hook (no-op for SigNoz). start + test + gather all
+  // live in the try so close() always runs in finally — even if start() or the
+  // test throws.
   const backend = await createBackend(config.backendConfig);
-  await backend.start?.();
-
-  const testStartMs = Date.now();
-  const testSummary = await runPlaywright({
-    test: parsed.test,
-    traceId,
-    runId,
-    evidenceDir,
-    extraEnv: parsed.extra_env,
-  });
-  const testEndMs = Date.now();
-
   try {
+    await backend.start();
+
+    const testStartMs = Date.now();
+    const testSummary = await runPlaywright({
+      test: parsed.test,
+      traceId,
+      runId,
+      evidenceDir,
+      extraEnv: parsed.extra_env,
+    });
+    const testEndMs = Date.now();
+
     const gathered = await gatherEvidence({
       runId,
       traceId,

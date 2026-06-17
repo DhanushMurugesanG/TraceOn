@@ -4,21 +4,13 @@ import { join } from 'node:path';
 import type { Span, LogRecord } from '../../types.js';
 import { TraceOnError } from '../../errors.js';
 import type { EvidenceBackend, WaitForTraceOptions, LogTimeWindow } from '../interface.js';
+import { DEFAULT_WAIT, waitForTraceSettle } from '../shared.js';
+import type { EmbeddedConfig } from '../config.js';
 import { parseTraces, parseLogs } from './parser.js';
 import { EmbeddedCollector, DEFAULT_OTLP_PORT, collectorPaths } from './collector.js';
 import { ensureCollectorBinary } from './binary.js';
 
-// Settle defaults intentionally identical to the SigNoz backend so the
-// agent's experience doesn't shift with the backend (plan risk register:
-// "span-settle heuristic differs from SigNoz's behavior").
-const DEFAULT_WAIT: WaitForTraceOptions = { maxWaitMs: 60_000, stabilityMs: 10_000, pollMs: 2_000 };
-
-export interface EmbeddedConfig {
-  port?: number;
-  dataDir?: string;
-  /** Override the settle defaults; exposed via the embedded config block. */
-  settle?: Partial<WaitForTraceOptions>;
-}
+export type { EmbeddedConfig };
 
 export function defaultDataDir(): string {
   return join(homedir(), '.traceon', 'embedded');
@@ -82,41 +74,42 @@ export class EmbeddedBackend implements EvidenceBackend {
 
   private readSpansForTrace(traceId: string): Span[] {
     if (!existsSync(this.tracesFile)) return [];
-    const all = parseTraces(readFileSync(this.tracesFile, 'utf-8'));
-    return all.filter((s) => s.trace_id === traceId);
+    const content = readFileSync(this.tracesFile, 'utf-8');
+    // Pre-filter to NDJSON lines mentioning this traceId BEFORE the (much
+    // costlier) JSON parse, so a large multi-trace file isn't fully re-parsed
+    // on every settle poll. The hex traceId appears verbatim in any OTLP/JSON
+    // line carrying it; a batched line with other traces is still parsed and
+    // filtered below, so this is a safe superset, not a lossy shortcut.
+    const relevant = content
+      .split('\n')
+      .filter((line) => line.includes(traceId))
+      .join('\n');
+    if (!relevant) return [];
+    return parseTraces(relevant).filter((s) => s.trace_id === traceId);
+  }
+
+  private collectorDownError(): TraceOnError {
+    return new TraceOnError(
+      'EMBEDDED_COLLECTOR_DOWN',
+      'The embedded OTel collector died while waiting for the trace to settle',
+      `Spans received before the crash are preserved. Check the collector log at ${join(this.dataDir, 'collector.log')} for the cause, then re-run the verify.`,
+    );
   }
 
   /**
-   * Decision A settle heuristic: poll the File-exporter output every pollMs,
-   * declare settled when the per-trace span count is unchanged for
-   * stabilityMs, give up (incomplete, not an error) at maxWaitMs — and bail
-   * out hard if the collector dies mid-wait, falling back to the standard
-   * unreachable error path instead of silently timing out.
+   * Decision A settle heuristic (shared with SigNoz via waitForTraceSettle):
+   * poll the File-exporter output, settle when the per-trace span count is
+   * stable for stabilityMs, give up (incomplete, not an error) at maxWaitMs —
+   * and bail out hard if the collector dies mid-wait.
    */
   async waitForTrace(traceId: string, opts?: WaitForTraceOptions): Promise<{ complete: boolean }> {
-    const o = opts ?? this.waitDefaults;
-    const start = Date.now();
-    let lastCount = 0;
-    let lastChangeAt = Date.now();
-
-    while (Date.now() - start < o.maxWaitMs) {
-      if (!this.collector.isAlive()) {
-        throw new TraceOnError(
-          'EMBEDDED_COLLECTOR_DOWN',
-          'The embedded OTel collector died while waiting for the trace to settle',
-          `Spans received before the crash are preserved. Check the collector log at ${join(this.dataDir, 'collector.log')} for the cause, then re-run the verify.`,
-        );
-      }
-      const count = this.readSpansForTrace(traceId).length;
-      if (count !== lastCount) {
-        lastCount = count;
-        lastChangeAt = Date.now();
-      } else if (lastCount > 0 && Date.now() - lastChangeAt > o.stabilityMs) {
-        return { complete: true };
-      }
-      await new Promise((r) => setTimeout(r, o.pollMs));
-    }
-    return { complete: false };
+    return waitForTraceSettle(
+      () => this.readSpansForTrace(traceId).length,
+      opts ?? this.waitDefaults,
+      () => {
+        if (!this.collector.isAlive()) throw this.collectorDownError();
+      },
+    );
   }
 
   async fetchSpans(traceId: string): Promise<Span[]> {
@@ -141,9 +134,14 @@ export class EmbeddedBackend implements EvidenceBackend {
   async close(): Promise<void> {}
 }
 
-// One collector per MCP-server process. handleVerify runs serially per
-// server, and the OTLP port is fixed — a second collector could never bind.
-let shared: { backend: EmbeddedBackend; collector: EmbeddedCollector } | null = null;
+// One collector per MCP-server process, keyed by its effective config.
+// handleVerify runs serially per server, so swapping the shared instance when
+// a different project's config arrives is race-free.
+let shared: { backend: EmbeddedBackend; collector: EmbeddedCollector; signature: string } | null = null;
+
+function configSignature(opts: EmbeddedConfig & { dataDir: string; port: number }): string {
+  return JSON.stringify({ port: opts.port, dataDir: opts.dataDir, settle: opts.settle ?? {} });
+}
 
 export interface GetEmbeddedBackendOptions extends EmbeddedConfig {
   /** Injectable for tests. Defaults to the real lazy download. */
@@ -158,16 +156,24 @@ export interface GetEmbeddedBackendOptions extends EmbeddedConfig {
 export async function getEmbeddedBackend(
   opts: GetEmbeddedBackendOptions = {},
 ): Promise<EmbeddedBackend> {
-  if (shared) return shared.backend;
-  const binaryPath = await (opts.ensureBinary ?? (() => ensureCollectorBinary()))();
   const dataDir = opts.dataDir ?? defaultDataDir();
-  const collector = new EmbeddedCollector({
-    binaryPath,
-    dataDir,
-    port: opts.port ?? DEFAULT_OTLP_PORT,
-  });
+  const port = opts.port ?? DEFAULT_OTLP_PORT;
+  const signature = configSignature({ ...opts, dataDir, port });
+
+  if (shared) {
+    if (shared.signature === signature) return shared.backend;
+    // A different project/config arrived in the same server process (different
+    // port/dataDir/settle). Tear down the old collector before standing up the
+    // new one so we don't leak a subprocess or bind-conflict on the port —
+    // otherwise the cached collector would silently serve the wrong project.
+    await shared.collector.stop();
+    shared = null;
+  }
+
+  const binaryPath = await (opts.ensureBinary ?? (() => ensureCollectorBinary()))();
+  const collector = new EmbeddedCollector({ binaryPath, dataDir, port });
   const backend = new EmbeddedBackend(collector, dataDir, opts.settle ?? {});
-  shared = { backend, collector };
+  shared = { backend, collector, signature };
   return backend;
 }
 

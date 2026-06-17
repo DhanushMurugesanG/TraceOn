@@ -28,9 +28,11 @@ const TEST_PORT = 41947;
 describe('generateCollectorConfig', () => {
   it('wires one OTLP receiver into separate trace and log file pipelines', () => {
     const cfg = generateCollectorConfig('/data/dir', 5555);
-    expect(cfg).toContain('endpoint: 127.0.0.1:5555');
-    expect(cfg).toContain(`path: ${join('/data/dir', 'traces.ndjson')}`);
-    expect(cfg).toContain(`path: ${join('/data/dir', 'logs.ndjson')}`);
+    expect(cfg).toContain('endpoint: "127.0.0.1:5555"');
+    // Paths are emitted as quoted YAML scalars (JSON.stringify) so spaces /
+    // colons in a custom dataDir can't break the config.
+    expect(cfg).toContain(`path: ${JSON.stringify(join('/data/dir', 'traces.ndjson'))}`);
+    expect(cfg).toContain(`path: ${JSON.stringify(join('/data/dir', 'logs.ndjson'))}`);
     expect(cfg).toContain('format: json');
     // Both pipelines present — logs parity with SigNoz is load-bearing.
     expect(cfg).toMatch(/traces:\s*\n\s*receivers: \[otlp\]\s*\n\s*exporters: \[file\/traces\]/);
@@ -39,7 +41,16 @@ describe('generateCollectorConfig', () => {
 
   it('defaults to port 4319 (adjacent to OTel standard 4318)', () => {
     expect(DEFAULT_OTLP_PORT).toBe(4319);
-    expect(generateCollectorConfig('/d')).toContain('endpoint: 127.0.0.1:4319');
+    expect(generateCollectorConfig('/d')).toContain('endpoint: "127.0.0.1:4319"');
+  });
+
+  it('quotes paths so a dataDir with spaces/colons stays valid YAML', () => {
+    const weird = '/Users/me/Library/Application Support/trace:on';
+    const cfg = generateCollectorConfig(weird, 4319);
+    // The exact quoted path must appear; no bare colon/space that would make
+    // the YAML scalar parse short.
+    expect(cfg).toContain(`path: ${JSON.stringify(join(weird, 'traces.ndjson'))}`);
+    expect(cfg).not.toContain(`path: ${join(weird, 'traces.ndjson')}\n`);
   });
 
   it('derives all paths from the data dir', () => {
@@ -130,16 +141,19 @@ describe('EmbeddedCollector', () => {
     }
   });
 
-  it('surfaces a dead-on-arrival binary as EMBEDDED_COLLECTOR_DOWN', async () => {
-    // Spawning a nonexistent path emits an async 'error' event; the readiness
-    // poll must convert that into the structured error, not hang to timeout.
+  it('surfaces a dead-on-arrival binary as EMBEDDED_COLLECTOR_SPAWN_FAILED with the cause', async () => {
+    // Spawning a nonexistent path emits an async 'error' event (ENOENT); the
+    // readiness poll must convert that into a structured spawn-failed error
+    // carrying the real cause, not a generic "exited during startup".
     const collector = new EmbeddedCollector({
       binaryPath: join(dataDir, 'does-not-exist'),
       dataDir,
       port: TEST_PORT + 6,
       readyTimeoutMs: 2_000,
     });
-    await expect(collector.start()).rejects.toMatchObject({ code: 'EMBEDDED_COLLECTOR_DOWN' });
+    await expect(collector.start()).rejects.toMatchObject({
+      code: 'EMBEDDED_COLLECTOR_SPAWN_FAILED',
+    });
   });
 
   it('stop() is idempotent and safe before start', async () => {

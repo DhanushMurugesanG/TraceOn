@@ -30,12 +30,14 @@ export interface LogTimeWindow {
  */
 export interface EvidenceBackend {
   /**
-   * Optional pre-test lifecycle hook. Called BEFORE the Playwright test
-   * runs: backends that receive pushed telemetry (embedded collector) must
-   * be listening while the test executes, not just when evidence is read.
-   * Query-style backends (SigNoz) don't implement it.
+   * Pre-test lifecycle hook. Called BEFORE the Playwright test runs: backends
+   * that receive pushed telemetry (embedded collector) must be listening
+   * while the test executes, not just when evidence is read. Required on the
+   * interface (not optional) so the contract is explicit — query-style
+   * backends like SigNoz implement it as a no-op rather than omitting it,
+   * which means the orchestrator never has to special-case a backend.
    */
-  start?(): Promise<void>;
+  start(): Promise<void>;
 
   /**
    * Cheap reachability probe. When `ok` is false the gather short-circuits

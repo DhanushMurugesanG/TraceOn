@@ -46,6 +46,36 @@ export function loadConfig(_env: string = 'default', projectRoot?: string): Trac
  * every verify call. The malformed case logs to stderr (visible in MCP
  * server logs) since silent fallback would be confusing to debug.
  */
+// Minimum poll interval (ms). Floors `pollMs` so a config of 0 can't turn the
+// settle loop into a CPU-pinning busy-spin that re-reads the trace file as fast
+// as the event loop allows.
+const MIN_POLL_MS = 50;
+const SETTLE_KEYS = ['maxWaitMs', 'stabilityMs', 'pollMs'] as const;
+
+/**
+ * Validate the embedded `settle` block from config.json. Only positive, finite
+ * numbers survive; anything else (0, NaN, strings, negatives) is dropped with a
+ * stderr note so the defaults apply instead of corrupting the timing math
+ * (`pollMs: 0` → busy-loop; `stabilityMs: "x"` → NaN → never settles).
+ */
+function sanitizeSettle(raw: unknown, path: string): { settle?: Record<string, number> } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const src = raw as Record<string, unknown>;
+  const settle: Record<string, number> = {};
+  for (const key of SETTLE_KEYS) {
+    const v = src[key];
+    if (v === undefined) continue;
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+      settle[key] = key === 'pollMs' ? Math.max(MIN_POLL_MS, v) : v;
+    } else {
+      console.error(
+        `[traceon] Ignoring invalid embedded.settle.${key} (${JSON.stringify(v)}) in ${path} — must be a positive number. Using the default.`,
+      );
+    }
+  }
+  return Object.keys(settle).length > 0 ? { settle } : {};
+}
+
 export function readProjectBackendConfig(projectRoot: string): BackendConfig | undefined {
   const path = join(projectRoot, '.traceon', 'config.json');
   if (!existsSync(path)) return undefined;
@@ -69,9 +99,7 @@ export function readProjectBackendConfig(projectRoot: string): BackendConfig | u
       embedded: {
         ...(typeof embedded['port'] === 'number' ? { port: embedded['port'] } : {}),
         ...(typeof embedded['dataDir'] === 'string' ? { dataDir: embedded['dataDir'] } : {}),
-        ...(embedded['settle'] && typeof embedded['settle'] === 'object'
-          ? { settle: embedded['settle'] as Record<string, number> }
-          : {}),
+        ...sanitizeSettle(embedded['settle'], path),
       },
     };
   }
