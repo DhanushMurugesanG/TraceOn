@@ -197,4 +197,11 @@ The `Makefile` at the repo root has convenience targets — run `make` with no a
 
 ## License
 
-[TBD]
+[MIT](LICENSE) © Dhanush Murugesan
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up,
+and please review our [Code of Conduct](CODE_OF_CONDUCT.md). For security
+issues, follow the [Security Policy](SECURITY.md) rather than opening a public
+issue.
