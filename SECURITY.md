@@ -18,7 +18,7 @@ Instead, use one of these private channels:
 
 - Open a [private security advisory](https://github.com/DhanushMurugesanG/TraceOn/security/advisories/new)
   (preferred), or
-- Email **periayavar@gmail.com** with the details.
+- Email **dhanushmarch@gmail.com** with the details.
 
 Please include:
 
