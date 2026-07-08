@@ -49,13 +49,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 npm install -g traceon-cli
 ```
 
-During the v0.2.0 shakeout, v0.2.0 is published under the npm `next` tag (`latest` is still 0.0.11), so install it with `@next`:
-
-```bash
-npm install -g traceon-cli@next
-```
-
-Once v0.2.0 is promoted to `latest`, the plain `npm install -g traceon-cli` above will pull it.
+Embedded mode is the default — no Docker, no SigNoz, no API key. (If you already run SigNoz, you can still choose it at `traceon init` — see "Bring your own backend" below.)
 
 ### 2. Initialize in your project
 
