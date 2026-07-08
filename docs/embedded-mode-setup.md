@@ -84,6 +84,26 @@ provider.add_span_processor(BatchSpanProcessor(
 trace.set_tracer_provider(provider)
 ```
 
+### Python / FastAPI: code.filepath attribution
+
+FastAPI/ASGI OTel auto-instrumentation doesn't set `code.filepath` on spans by
+default, so TraceOn can't map spans back to specific Python source files.
+Changed backend files then show up in `coverage.misses` with
+`coverage.attribution_limited: true`.
+
+This is an upstream `opentelemetry-python-contrib` limitation, not a TraceOn
+bug. The spans themselves (HTTP, DB, etc.) still arrive and are ranked
+normally — only *file-level* coverage attribution is affected.
+
+**What to do: usually nothing.** TraceOn flags this (`attribution_limited`), and
+the skill knows to treat those misses as low-confidence and verify the change
+by asserting on the response body — which your Playwright test already does. No
+action is needed for most users.
+
+**Optional** — if you need true file-level attribution, set `code.filepath`
+yourself via manual instrumentation, or a custom `SpanProcessor` whose
+`on_start` sets `span.set_attribute("code.filepath", <path>)`.
+
 ## Dual exporter — keep your existing observability
 
 If your backend already exports to SigNoz / Tempo / Datadog, don't replace
