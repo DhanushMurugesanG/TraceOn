@@ -243,6 +243,11 @@ async function doctor() {
 const args = process.argv.slice(2);
 const cmd = args[0];
 
+// `--help` / `-h` after a subcommand (e.g. `traceon init --help`) should print
+// usage, not run the subcommand. The dispatch below keys on args[0], so without
+// this the flag lands in args[1] and gets ignored.
+const wantsHelp = (rest) => rest.includes('--help') || rest.includes('-h');
+
 if (cmd === '--version' || cmd === '-v') {
   console.log(`traceon ${pkg.version}`);
   process.exit(0);
@@ -252,10 +257,18 @@ if (!cmd || cmd === '--help' || cmd === '-h') {
   process.exit(0);
 }
 if (cmd === 'init') {
+  if (wantsHelp(args.slice(1))) {
+    usage();
+    process.exit(0);
+  }
   await init();
   process.exit(0);
 }
 if (cmd === 'doctor') {
+  if (wantsHelp(args.slice(1))) {
+    usage();
+    process.exit(0);
+  }
   await doctor();
   // doctor() handles its own process.exit
 }
