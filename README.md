@@ -16,14 +16,15 @@ Alpha. v0.2.0 ships with:
 
 - **Embedded backend (default)** — TraceOn runs its own OTel Collector; zero extra services
 - SigNoz backend for existing installs (fully backward compatible)
-- Mac and Linux only (Windows planned for v1.2)
+- Mac and Linux only (Windows planned for v1.2; runs today on Windows via WSL2 — see [docs/wsl-setup.md](docs/wsl-setup.md))
 - A sample app (sibling repo `traceon-spike`) for testing
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 22+ (Node 20+ works; the CLI's `engines` floor is 20)
+- **On Windows?** Run everything under WSL2 Ubuntu — see [docs/wsl-setup.md](docs/wsl-setup.md) (keep the project in `~/...`, and install the Playwright browser system deps)
 - pnpm 11+
 - Claude Code (with MCP server support)
 - A web app with a frontend that talks to an OTel-instrumented backend
@@ -179,7 +180,7 @@ Run history is persisted to `~/.traceon/runs.db` (SQLite). Per-run evidence (raw
 
 - **Two backends: embedded (default) and SigNoz.** Tempo / Jaeger / Datadog / Honeycomb are planned on the same `EvidenceBackend` interface (v0.3.0+).
 - **Embedded mode captures backend logs only if your OTel SDK exports them.** Most trace-only SDK setups produce spans but no OTLP logs; trace evidence is unaffected.
-- **Mac and Linux only.** Windows support is planned for v1.2.
+- **Mac and Linux only.** Windows support is planned for v1.2. On Windows, run TraceOn under WSL2 Ubuntu today — see [docs/wsl-setup.md](docs/wsl-setup.md) for the setup gotchas.
 - **File-level coverage attribution is OpenTelemetry-limited.** Backend spans are attributed by OTel to the route/framework, not the specific source file that ran. TraceOn surfaces this as `coverage.attribution_limited: true` rather than a false alarm; the skill knows to downgrade the warning when the test asserted on a real response body.
 - **The trace-settle wait defaults to 60s max.** TraceOn skips the wait entirely for tests that fire no responses (returns in ~2s). Embedded mode exposes the settle timings via `.traceon/config.json`; the SigNoz wait isn't currently tunable per call.
 - **No CI/CD integration.** v1 is for local dev / staging. Production environment safety is out of scope.

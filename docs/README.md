@@ -8,6 +8,9 @@ Design notes, architecture writeups, and reference material for TraceOn.
   (default since v0.2.0): how the embedded OTel collector works,
   per-language exporter snippets (Node/Go/Python), the dual-exporter
   pattern, config reference, troubleshooting.
+- [wsl-setup.md](wsl-setup.md) — running TraceOn on Windows / WSL2
+  Ubuntu: filesystem placement, Node under nvm, the Playwright browser
+  system-dependency gotcha, and a symptom→fix table.
 - [auth-and-cors-setup.md](auth-and-cors-setup.md) — two common gotchas
   when pointing TraceOn at a real-world app: auth-protected backends
   (token handling) and `traceparent` CORS allow-headers.
