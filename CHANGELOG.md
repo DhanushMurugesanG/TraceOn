@@ -5,6 +5,38 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
+## [0.2.1] - 2026-06-16
+
+First fixes from external alpha testing. Reported by **Thirumalaiboobathi**
+(Madurai AI Community) — TraceOn's first external user — who tested v0.2.0 on
+WSL2 Ubuntu with a FastAPI + OpenTelemetry backend and a React frontend (both
+verifications passed end-to-end). With thanks.
+
+### Fixed
+
+- `traceon init --help` and `traceon doctor --help` now print usage instead of
+  running the subcommand — the CLI had dispatched only on the first argument, so
+  a `--help` after a subcommand was ignored.
+- `traceon doctor` now **actually launches headless Chromium**, catching WSL2 /
+  minimal-Linux setups where the browser can't start because system libraries
+  (libnss3, libatk-bridge, …) are missing. Previously "Playwright is installed"
+  showed green while Chromium couldn't launch — false confidence. The fix points
+  to `sudo npx playwright install-deps`.
+
+### Added
+
+- `docs/wsl-setup.md` — a WSL2 setup guide: filesystem placement (keep the
+  project off `/mnt/c`), Node under nvm, the Playwright browser
+  system-dependency gotcha, and a symptom→fix table.
+
+### Documentation
+
+- Documented the FastAPI / ASGI `code.filepath` attribution gap (an upstream
+  `opentelemetry-python-contrib` limitation, not a TraceOn bug): Python backend
+  files show up in `coverage.misses` with `attribution_limited: true` even
+  though they ran — verify by asserting on the response body. (README Limits +
+  `docs/embedded-mode-setup.md`.)
+
 ## [0.2.0] - 2026-06-16
 
 > Currently published to npm under the `next` dist-tag — install with
