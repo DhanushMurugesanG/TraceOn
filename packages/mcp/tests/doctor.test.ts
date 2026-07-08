@@ -17,6 +17,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { playwrightInstalled } from '../src/doctor/checks/playwright-installed.js';
 import {
+  chromiumLaunches,
+  classifyLaunchFailure,
+} from '../src/doctor/checks/chromium-launches.js';
+import {
   playwrightConfig,
   extractBaseUrl,
   extractWebServerUrl,
@@ -46,6 +50,58 @@ afterEach(() => {
 function emptyCtx(projectRoot: string): DoctorContext {
   return { cwd: projectRoot, projectRoot };
 }
+
+describe('classifyLaunchFailure', () => {
+  it('classifies WSL missing-system-libs errors as missing-deps', () => {
+    // Real Playwright message shapes seen on WSL2 / minimal Linux.
+    expect(
+      classifyLaunchFailure(
+        "browserType.launch: Host system is missing dependencies to run browsers.\nMissing libraries:\n    libnss3.so.1\n    libatk-1.0.so.0",
+      ),
+    ).toBe('missing-deps');
+    expect(
+      classifyLaunchFailure(
+        'error while loading shared libraries: libnss3.so: cannot open shared object file: No such file or directory',
+      ),
+    ).toBe('missing-deps');
+    expect(classifyLaunchFailure('… libgbm.so.1: cannot open shared object file')).toBe(
+      'missing-deps',
+    );
+  });
+
+  it('classifies a not-downloaded browser as browser-not-installed', () => {
+    const msg =
+      "browserType.launch: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium-1234/chrome-linux/chrome\n" +
+      'Looks like Playwright was just installed or updated.\n' +
+      'Please run the following command to download new browsers:\n    npx playwright install';
+    expect(classifyLaunchFailure(msg)).toBe('browser-not-installed');
+  });
+
+  it('does not misread the missing-deps "install-deps" hint as browser-not-installed', () => {
+    // The missing-deps message also mentions "sudo npx playwright install-deps".
+    expect(
+      classifyLaunchFailure(
+        'Host system is missing dependencies. Please install them with: sudo npx playwright install-deps',
+      ),
+    ).toBe('missing-deps');
+  });
+
+  it('falls back to other for unrecognized errors and empty output', () => {
+    expect(classifyLaunchFailure('some unexpected internal error')).toBe('other');
+    expect(classifyLaunchFailure('')).toBe('other');
+  });
+});
+
+describe('chromiumLaunches check', () => {
+  it('skips cleanly when Playwright is not installed (no double-report)', async () => {
+    const root = mkProject();
+    writeFileSync(join(root, 'package.json'), '{}');
+    // No node_modules/.bin/playwright → skip, without spawning anything.
+    const r = await chromiumLaunches(emptyCtx(root));
+    expect(r.status).toBe('skip');
+    expect(r.name).toBe('Chromium launches');
+  });
+});
 
 describe('playwrightInstalled check', () => {
   it('passes when the local Playwright binary exists', async () => {

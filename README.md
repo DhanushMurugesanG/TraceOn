@@ -102,9 +102,10 @@ If `traceon_verify` returns confusing errors, empty evidence, or just doesn't se
 traceon doctor
 ```
 
-It runs eight preflight checks in ~10 seconds and tells you what's wrong before you try to verify a change:
+It runs nine preflight checks in ~10 seconds and tells you what's wrong before you try to verify a change:
 
 - **Playwright is installed** in this project
+- **Chromium actually launches** — catches WSL2 / minimal-Linux setups where the browser can't start because system libraries (libnss3, …) are missing; fix points to `sudo npx playwright install-deps`
 - **Playwright config is parseable** (extracts baseURL / webServer.url for the next checks)
 - **Frontend reachable** at the baseURL
 - **Backend reachable** at the detected backend URL (from vite proxy, `.env`, or common defaults)

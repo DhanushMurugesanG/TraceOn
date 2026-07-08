@@ -5,6 +5,7 @@ import type { CheckFn, CheckResult, DoctorContext } from './types.js';
 import { renderAll } from './renderer.js';
 
 import { playwrightInstalled } from './checks/playwright-installed.js';
+import { chromiumLaunches } from './checks/chromium-launches.js';
 import { playwrightConfig } from './checks/playwright-config.js';
 import { frontendReachable } from './checks/frontend-reachable.js';
 import { backendReachable } from './checks/backend-reachable.js';
@@ -17,6 +18,7 @@ import { skillUpToDate } from './checks/skill-up-to-date.js';
 // checks read from. Don't reorder without tracing the data flow.
 const CHECKS: CheckFn[] = [
   playwrightInstalled,
+  chromiumLaunches,    // actually launches Chromium — catches WSL missing-libs false-green
   playwrightConfig,    // populates baseUrl, webServerUrl
   frontendReachable,   // reads baseUrl
   backendReachable,    // populates backendUrl
