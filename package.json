@@ -1,6 +1,6 @@
 {
   "name": "traceon-cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Runtime verification for AI coding agents. MCP server that lets Claude Code verify code changes work end-to-end via Playwright + OpenTelemetry. Embedded OTel collector by default \u2014 no Docker, no SigNoz required.",
   "keywords": [
     "mcp",
