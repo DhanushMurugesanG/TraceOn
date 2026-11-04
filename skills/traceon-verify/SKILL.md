@@ -1,7 +1,7 @@
 ---
 name: traceon-verify
-version: 0.2.0
-description: Use this skill when implementing or fixing user-facing features in projects that have TraceOn configured. Trigger words include "add", "implement", "build", "create", "fix bug in", or any feature work where behavior changes are observable in a running application. Use it especially when the change crosses frontend and backend, where visual confirmation isn't enough.
+version: 0.2.3
+description: Verify that a user-facing code change really works end to end. You run a Playwright test against the live app, and the TraceOn MCP server's traceon_verify tool returns the backend OpenTelemetry traces, logs and browser errors as evidence. Use this skill when implementing or fixing features in a running web app. Trigger words include "add", "implement", "build", "create" and "fix bug in". Use it especially when the change crosses frontend and backend, where visual confirmation isn't enough. Requires the TraceOn MCP server (`npm install -g traceon-cli`, then `traceon init` in the project; Node 20+; macOS, Linux or WSL2), Playwright in the project, and a backend instrumented with OpenTelemetry that exports traces to TraceOn.
 ---
 
 # Verifying changes with TraceOn
@@ -21,6 +21,46 @@ honestly, not to declare done based on the green checkmark alone.
 
 The MCP tool you call is `traceon_verify`. The result it returns contains
 the truth of what happened. Trust the evidence over your own assumptions.
+
+## Prerequisites
+
+This skill depends on the TraceOn MCP server. The project needs all of
+these:
+
+1. **TraceOn installed:** `npm install -g traceon-cli` (Node.js 20+;
+   macOS, Linux, or Windows under WSL2).
+2. **`traceon init` run in the project root.** It downloads TraceOn's
+   OpenTelemetry Collector (~95 MB, one-time, from the official
+   opentelemetry-collector-releases on GitHub), writes
+   `.traceon/config.json`, registers the MCP server with Claude Code
+   and Claude Desktop, installs this skill into `.claude/skills/`, and
+   adds a Playwright fixture at `tests/traceon-fixture.js`. Other MCP
+   clients: add `{ "command": "traceon", "args": ["mcp"] }` to that
+   client's MCP server config instead.
+3. **Playwright in the project:** `@playwright/test` installed, plus a
+   Chromium browser (`npx playwright install chromium`).
+4. **A backend instrumented with OpenTelemetry** that exports traces to
+   TraceOn's local collector:
+   `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4319` and
+   `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
+5. **CORS (if frontend and backend are on different origins):** the
+   backend's `Access-Control-Allow-Headers` must include `traceparent`.
+
+`traceon doctor` checks all of this in about 10 seconds. Full setup
+guide: https://github.com/DhanushMurugesanG/TraceOn#quick-start
+
+### If `traceon_verify` isn't available
+
+If the `traceon_verify` tool is not in your tool list, TraceOn isn't set
+up for this session. **Do not claim the change was verified** and do not
+simulate a verification result. Tell the user which prerequisites above
+look missing and that they need to restart their agent after
+`traceon init` so it loads the MCP server.
+
+Do NOT run `npm install -g traceon-cli` or `traceon init` yourself
+unless the user explicitly approves. The install changes the user's
+global packages, and init downloads a binary and edits their agent
+config. Both are the user's call.
 
 ## The workflow
 
