@@ -15,3 +15,6 @@ coverage/
 
 # Local-only personal note (Claude config restore), not project docs
 docs/restore-claude.md
+
+# Agensi marketplace zip (scripts/package-agensi.mjs)
+build/
