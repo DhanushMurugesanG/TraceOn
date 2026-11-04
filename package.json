@@ -1,6 +1,6 @@
 {
   "name": "traceon-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Runtime verification for AI coding agents. MCP server that lets Claude Code verify code changes work end-to-end via Playwright + OpenTelemetry. Embedded OTel collector by default \u2014 no Docker, no SigNoz required.",
   "keywords": [
     "mcp",
@@ -38,6 +38,7 @@
     "build": "pnpm -r build",
     "build:bundle": "node scripts/bundle.mjs",
     "build:all": "pnpm -r build && node scripts/bundle.mjs",
+    "package:agensi": "node scripts/package-agensi.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "prepublishOnly": "pnpm build:all"

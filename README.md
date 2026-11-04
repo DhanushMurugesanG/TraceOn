@@ -83,6 +83,16 @@ In Claude Code, ask for a small user-facing change in your project — for examp
 
 Claude should write the implementation, write a Playwright test, call `traceon_verify`, read the evidence, and report what was verified. If anything fails, Claude iterates — up to 3 times — based on the Tier 1 evidence.
 
+## Other MCP clients
+
+`traceon init` registers TraceOn with Claude Code and Claude Desktop. For any other MCP client, add this to that client's MCP server config:
+
+```json
+{ "mcpServers": { "traceon": { "command": "traceon", "args": ["mcp"] } } }
+```
+
+If the client can't find `traceon` on its PATH (common with nvm-installed Node and GUI apps), use the full path from `which traceon`. Only Claude Code is tested; other clients should work over standard MCP stdio, but they're untested. The agent instructions are in [skills/traceon-verify/SKILL.md](skills/traceon-verify/SKILL.md). Give them to your agent the way that client loads instructions.
+
 ## Bring your own backend (SigNoz)
 
 If you already run SigNoz, pick **SigNoz** at the `traceon init` backend prompt. You'll need SigNoz running (the [Docker install guide](https://signoz.io/docs/install/docker/)) and an API key (**Settings → API Keys**). Existing pre-v0.2.0 installs keep working without any changes — env-var-configured SigNoz setups are detected automatically when no `.traceon/config.json` names a backend.

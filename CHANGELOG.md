@@ -5,6 +5,38 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
+## [0.2.3] - 2026-11-05
+
+### Added
+
+- `traceon mcp` starts the MCP server over stdio, so MCP clients other than
+  Claude Code and Claude Desktop can use a portable config entry,
+  `{ "command": "traceon", "args": ["mcp"] }`. Before this, the only entry was
+  `node <absolute install path>/dist/mcp.js`, which differs on every machine.
+  `traceon init` still writes the absolute path for Claude, because GUI apps
+  often don't have the npm global bin on their PATH.
+- `pnpm package:agensi` builds `build/agensi/traceon-verify.zip` for the Agensi
+  skill marketplace. It contains the skill, a setup guide, and an MCP config
+  template from `packaging/agensi/`.
+
+### Changed
+
+- `traceon-verify` skill bumped to 0.2.3. The description now states the
+  prerequisites: npm install, `traceon init`, an OpenTelemetry-instrumented
+  backend, and Playwright. A new Prerequisites section covers setup, and the
+  skill now tells the agent what to do if `traceon_verify` isn't available:
+  never claim the change was verified, and don't install TraceOn without the
+  user's approval. Projects with the 0.2.0 skill get the usual "re-run
+  `traceon init`" warning.
+
+## [0.2.2] - 2026-07-17
+
+### Fixed
+
+- `traceon doctor`'s "MCP server is registered" check reads the Claude config
+  file first. Before, it reported a false failure when the `claude mcp list`
+  subprocess failed even though the registration was fine.
+
 ## [0.2.1] - 2026-06-16
 
 First fixes from external alpha testing. Reported by **Thirumalaiboobathi**

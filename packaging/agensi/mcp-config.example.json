@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "traceon": {
+      "command": "traceon",
+      "args": ["mcp"]
+    }
+  }
+}
