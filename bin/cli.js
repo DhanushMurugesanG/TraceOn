@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // traceon CLI — `traceon init` registers the bundled MCP server with
 // Claude Code and installs the traceon-verify skill in the current project.
+// `traceon mcp` runs that server directly, for MCP clients init doesn't
+// configure.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
@@ -209,6 +211,11 @@ Usage:
                       traceparent, SigNoz reachable, etc.). Exits 0 if
                       everything looks good, 1 if any check failed.
 
+  traceon mcp         Start the MCP server over stdio. init already
+                      registers it with Claude Code and Claude Desktop;
+                      use this as the command in any other MCP client's
+                      config: { "command": "traceon", "args": ["mcp"] }
+
   traceon --version   Show version.
   traceon --help      Show this message.
 
@@ -238,6 +245,17 @@ async function doctor() {
   const result = await runDoctor({ cwd: process.cwd(), useColor, useUnicode });
   process.stdout.write(result.rendered + '\n');
   process.exit(result.ok ? 0 : 1);
+}
+
+async function mcp() {
+  if (!existsSync(mcpServerPath)) {
+    console.error(`Bundled MCP server not found at ${mcpServerPath}.`);
+    console.error('This usually means the package install is incomplete. Try reinstalling.');
+    process.exit(1);
+  }
+  // stdout is the MCP transport from here on — never print to it. The server
+  // module connects on import and exits itself when the client closes stdin.
+  await import(mcpServerPath);
 }
 
 const args = process.argv.slice(2);
@@ -272,7 +290,15 @@ if (cmd === 'doctor') {
   await doctor();
   // doctor() handles its own process.exit
 }
-
-console.error(`Unknown command: ${cmd}`);
-console.error(`Run \`traceon --help\` for usage.`);
-process.exit(1);
+if (cmd === 'mcp') {
+  if (wantsHelp(args.slice(1))) {
+    usage();
+    process.exit(0);
+  }
+  // Long-running: don't fall through to the unknown-command exit below.
+  await mcp();
+} else {
+  console.error(`Unknown command: ${cmd}`);
+  console.error(`Run \`traceon --help\` for usage.`);
+  process.exit(1);
+}
